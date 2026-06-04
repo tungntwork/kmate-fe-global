@@ -28,6 +28,7 @@ const COIN_TYPE_COLORS: Record<string, string> = {
   UNLOCK_VIDEO: 'red',
   SUBTITLE_GENERATION: 'volcano',
   REFUND: 'lime',
+  ADMIN_GRANT: 'blue',
 };
 
 const COIN_TYPE_LABELS: Record<string, string> = {
@@ -40,6 +41,7 @@ const COIN_TYPE_LABELS: Record<string, string> = {
   UNLOCK_VIDEO: 'Mở video',
   SUBTITLE_GENERATION: 'Tạo phụ đề',
   REFUND: 'Hoàn tiền',
+  ADMIN_GRANT: 'Quản trị cấp',
 };
 
 export default function UserWalletPage() {

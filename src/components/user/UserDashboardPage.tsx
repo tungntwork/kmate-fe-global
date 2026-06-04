@@ -1,6 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Spin } from 'antd';
 import {
   PlayCircleOutlined,
   FireOutlined,
@@ -9,53 +11,88 @@ import {
   TrophyOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/store/auth.store';
+import { userService, flashcardService, type UserStatistics, type LearningHistory, type Flashcard } from '@/lib/api-services';
 
-const STATS = [
-  {
-    icon: <FireOutlined />,
-    label: 'Chuỗi ngày',
-    value: '15 Ngày',
-    sub: 'Kỷ lục: 24 Ngày',
-    color: '#00e5ff',
-    bgColor: 'rgba(0, 229, 255, 0.1)',
-    borderColor: 'rgba(0, 229, 255, 0.4)',
-    shadowClass: 'user-neon-blue',
-  },
-  {
-    icon: <ThunderboltOutlined />,
-    label: 'XP Tích lũy',
-    value: '2,450',
-    sub: 'Hạng: Vàng II',
-    color: '#7c4dff',
-    bgColor: 'rgba(124, 77, 255, 0.1)',
-    borderColor: 'rgba(124, 77, 255, 0.4)',
-    shadowClass: '',
-  },
-  {
-    icon: <BookOutlined />,
-    label: 'Từ đã học',
-    value: '420',
-    sub: '+12 hôm nay',
-    color: '#22c55e',
-    bgColor: 'rgba(34, 197, 94, 0.1)',
-    borderColor: 'rgba(34, 197, 94, 0.4)',
-    shadowClass: '',
-  },
-  {
-    icon: <TrophyOutlined />,
-    label: 'Video đã xem',
-    value: '12',
-    sub: '2 video nữa lên cấp 15',
-    color: '#f59e0b',
-    bgColor: 'rgba(245, 158, 11, 0.1)',
-    borderColor: 'rgba(245, 158, 11, 0.4)',
-    shadowClass: '',
-  },
-];
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes}p`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}p` : `${h}h`;
+}
 
 export default function UserDashboardPage() {
   const { user } = useAuthStore();
   const displayName = user?.name ?? 'User';
+
+  const [stats, setStats] = useState<UserStatistics | null>(null);
+  const [history, setHistory] = useState<LearningHistory[]>([]);
+  const [dueCards, setDueCards] = useState<Flashcard[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      userService.getStatistics().catch(() => null),
+      userService.getHistory({ limit: 5 }).catch(() => null),
+      flashcardService.getDue().catch(() => null),
+    ]).then(([statsRes, historyRes, dueRes]) => {
+      if (statsRes) setStats(statsRes.data.data);
+      if (historyRes) setHistory(historyRes.data.data);
+      if (dueRes) setDueCards(dueRes.data.data);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  const recentWatch = history[0];
+
+  const statCards = [
+    {
+      icon: <FireOutlined />,
+      label: 'Chuỗi ngày',
+      value: stats ? `${stats.currentStreak} Ngày` : '—',
+      sub: stats ? `Kỷ lục: ${stats.longestStreak} Ngày` : '',
+      color: '#00e5ff',
+      bgColor: 'rgba(0, 229, 255, 0.1)',
+      borderColor: 'rgba(0, 229, 255, 0.4)',
+      shadowClass: 'user-neon-blue',
+    },
+    {
+      icon: <ThunderboltOutlined />,
+      label: 'Phút học',
+      value: stats ? formatDuration(stats.totalMinutesLearned) : '—',
+      sub: `${stats?.totalVideosWatched ?? 0} video đã xem`,
+      color: '#7c4dff',
+      bgColor: 'rgba(124, 77, 255, 0.1)',
+      borderColor: 'rgba(124, 77, 255, 0.4)',
+      shadowClass: '',
+    },
+    {
+      icon: <BookOutlined />,
+      label: 'Flashcard',
+      value: stats ? String(stats.totalFlashcards) : '—',
+      sub: `${stats?.totalFlashcardReviews ?? 0} lần ôn tập`,
+      color: '#22c55e',
+      bgColor: 'rgba(34, 197, 94, 0.1)',
+      borderColor: 'rgba(34, 197, 94, 0.4)',
+      shadowClass: '',
+    },
+    {
+      icon: <TrophyOutlined />,
+      label: 'Quiz',
+      value: stats ? String(stats.totalQuizzesTaken) : '—',
+      sub: `${stats?.totalWordsLookedUp ?? 0} từ đã tra`,
+      color: '#f59e0b',
+      bgColor: 'rgba(245, 158, 11, 0.1)',
+      borderColor: 'rgba(245, 158, 11, 0.4)',
+      shadowClass: '',
+    },
+  ];
 
   return (
     <div className="p-6 lg:p-10 space-y-10 bg-gradient-cyber min-h-full">
@@ -73,15 +110,18 @@ export default function UserDashboardPage() {
             </h2>
             <p className="text-slate-400 text-base">Tiếp tục hành trình học tiếng Hàn của bạn.</p>
             <div className="mt-6 flex gap-4 flex-wrap">
-              <button className="bg-primary hover:bg-primary/80 text-background-dark font-bold px-6 py-3 rounded-xl transition-all flex items-center gap-2 !text-sm">
-                <PlayCircleOutlined />
-                Bắt đầu ngay
-              </button>
               <Link
-                href="/user/library"
+                href="/user/explore"
+                className="bg-primary hover:bg-primary/80 text-background-dark font-bold px-6 py-3 rounded-xl transition-all flex items-center gap-2 !text-sm"
+              >
+                <PlayCircleOutlined />
+                Khám phá ngay
+              </Link>
+              <Link
+                href="/user/flashcards"
                 className="bg-white/5 hover:bg-white/10 border border-white/10 px-6 py-3 rounded-xl font-bold transition-all !text-sm text-white"
               >
-                Thư viện của tôi
+                Flashcard của tôi
               </Link>
             </div>
           </div>
@@ -102,7 +142,7 @@ export default function UserDashboardPage() {
 
       {/* Stats Grid */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {STATS.map((stat) => (
+        {statCards.map((stat) => (
           <div
             key={stat.label}
             className={`user-glass-card p-6 relative group overflow-hidden ${stat.shadowClass}`}
@@ -113,10 +153,7 @@ export default function UserDashboardPage() {
               style={{ backgroundColor: stat.color }}
             />
             <div className="flex items-center justify-between mb-4">
-              <span
-                className="text-3xl"
-                style={{ color: stat.color }}
-              >
+              <span className="text-3xl" style={{ color: stat.color }}>
                 {stat.icon}
               </span>
               <span
@@ -141,57 +178,70 @@ export default function UserDashboardPage() {
               <PlayCircleOutlined className="text-primary" />
               Tiếp tục xem
             </h3>
-            <Link href="/user/library" className="text-xs font-bold text-primary hover:underline">
+            <Link href="/user/explore" className="text-xs font-bold text-primary hover:underline">
               Xem tất cả
             </Link>
           </div>
 
-          <div className="user-glass-card overflow-hidden group flex flex-col md:flex-row border border-white/10">
-            <div className="md:w-2/5 relative h-48 md:h-auto overflow-hidden shrink-0">
-              <div className="w-full h-full bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center">
-                <PlayCircleOutlined className="text-6xl text-white/30" />
-              </div>
-              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="28" cy="28" r="27" stroke="white" strokeWidth="2" opacity="0.5"/>
-                  <path d="M23 19L38 28L23 37V19Z" fill="white"/>
-                </svg>
-              </div>
-            </div>
-
-            <div className="p-6 md:w-3/5 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-secondary/20 text-secondary border border-secondary/30 uppercase">
-                    Trung cấp
-                  </span>
-                  <span className="text-[10px] text-slate-400">14:20 Thời lượng</span>
-                </div>
-                <h4 className="text-lg font-bold text-white mb-2">Cảnh hội thoại K-Drama</h4>
-                <p className="text-sm text-slate-400 leading-relaxed">
-                  Thành thạo các đuôi kính ngữ (요/습니다) trong môi trường văn phòng.
-                </p>
-              </div>
-
-              <div className="space-y-3 mt-4">
-                <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: '65%', backgroundColor: '#00e5ff', boxShadow: '0 0 10px #00e5ff' }}
+          {recentWatch ? (
+            <div className="user-glass-card overflow-hidden group flex flex-col md:flex-row border border-white/10">
+              <div className="md:w-2/5 relative h-48 md:h-auto overflow-hidden shrink-0 bg-dark-300">
+                {recentWatch.video?.thumbnail ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={recentWatch.video.thumbnail}
+                    alt={recentWatch.video.title}
+                    className="w-full h-full object-cover"
                   />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center">
+                    <PlayCircleOutlined className="text-6xl text-white/30" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                  <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+                    <circle cx="28" cy="28" r="27" stroke="white" strokeWidth="2" opacity="0.5"/>
+                    <path d="M23 19L38 28L23 37V19Z" fill="white"/>
+                  </svg>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-500">Đã hoàn thành 65%</span>
+              </div>
+
+              <div className="p-6 md:w-3/5 flex flex-col justify-between">
+                <div>
+                  <h4 className="text-lg font-bold text-white mb-2">
+                    {recentWatch.video?.title ?? 'Video đang học'}
+                  </h4>
+                  {recentWatch.duration > 0 && (
+                    <p className="text-sm text-slate-400">
+                      {Math.floor(recentWatch.duration / 60)} phút • Đã tra {recentWatch.wordsLookedUp} từ
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-3 mt-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-slate-500">
+                      Lần học cuối: {new Date(recentWatch.startTime).toLocaleDateString('vi-VN')}
+                    </span>
+                  </div>
                   <Link
-                    href="/learn/demo-video"
-                    className="bg-primary hover:bg-primary/80 text-background-dark text-xs font-bold py-2 px-4 rounded-lg transition-all"
+                    href={recentWatch.video ? `/watch/${recentWatch.video.youtubeId}` : '/user/explore'}
+                    className="bg-primary hover:bg-primary/80 text-background-dark text-xs font-bold py-2 px-4 rounded-lg transition-all inline-block"
                   >
                     Tiếp tục học
                   </Link>
                 </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="user-glass-card p-8 border border-white/10 text-center">
+              <PlayCircleOutlined className="text-4xl text-slate-600 mb-3" />
+              <p className="text-slate-400">Chưa có video nào. Hãy bắt đầu khám phá!</p>
+              <Link href="/user/explore" className="text-primary text-sm font-bold hover:underline mt-2 inline-block">
+                Khám phá video →
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Daily Review */}
@@ -203,44 +253,59 @@ export default function UserDashboardPage() {
             Ôn tập hàng ngày
           </h3>
 
-          <div className="space-y-3">
+          {dueCards.length > 0 ? (
             <div className="user-glass-card p-4 border border-white/5 hover:border-primary/30 transition-all cursor-pointer">
               <div className="flex items-center justify-between mb-2">
                 <BookOutlined className="text-primary text-lg" />
-                <span className="text-[10px] font-bold text-primary uppercase">Từ vựng</span>
+                <span className="text-[10px] font-bold text-primary uppercase">Flashcard</span>
               </div>
-              <p className="text-white font-bold text-sm mb-1">12 từ cần ôn</p>
-              <p className="text-xs text-slate-500 mb-3">Chủ đề: Cuộc sống hàng ngày</p>
-              <button className="w-full py-2 rounded-lg bg-primary/20 text-primary text-xs font-bold hover:bg-primary hover:text-background-dark transition-all">
+              <p className="text-white font-bold text-sm mb-1">{dueCards.length} thẻ cần ôn</p>
+              <p className="text-xs text-slate-500 mb-3">Ôn tập để cải thiện trí nhớ</p>
+              <Link
+                href="/user/flashcards"
+                className="w-full block text-center py-2 rounded-lg bg-primary/20 text-primary text-xs font-bold hover:bg-primary hover:text-background-dark transition-all"
+              >
                 Bắt đầu ôn
-              </button>
+              </Link>
             </div>
+          ) : (
+            <div className="user-glass-card p-4 border border-white/5 text-center">
+              <BookOutlined className="text-primary text-lg mb-2" />
+              <p className="text-white font-bold text-sm mb-1">Không có thẻ cần ôn</p>
+              <p className="text-xs text-slate-500">Tạo flashcard mới để học!</p>
+            </div>
+          )}
 
-            <div className="user-glass-card p-4 border border-white/5 hover:border-secondary/30 transition-all cursor-pointer">
-              <div className="flex items-center justify-between mb-2">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-secondary">
-                  <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                </svg>
-                <span className="text-[10px] font-bold text-secondary uppercase">Kiểm tra kiến thức</span>
-              </div>
-              <p className="text-white font-bold text-sm mb-1">Bài quiz 5 câu hỏi</p>
-              <p className="text-xs text-slate-500 mb-3">Củng cố từ vựng hôm nay</p>
-              <button className="w-full py-2 rounded-lg bg-secondary/20 text-secondary text-xs font-bold hover:bg-secondary hover:text-white transition-all">
-                Làm quiz
-              </button>
+          <div className="user-glass-card p-4 border border-white/5 hover:border-secondary/30 transition-all cursor-pointer">
+            <div className="flex items-center justify-between mb-2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-secondary">
+                <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+              </svg>
+              <span className="text-[10px] font-bold text-secondary uppercase">Quiz</span>
             </div>
+            <p className="text-white font-bold text-sm mb-1">Kiểm tra kiến thức</p>
+            <p className="text-xs text-slate-500 mb-3">Củng cố từ vựng hôm nay</p>
+            <Link
+              href="/user/quiz"
+              className="w-full block text-center py-2 rounded-lg bg-secondary/20 text-secondary text-xs font-bold hover:bg-secondary hover:text-white transition-all"
+            >
+              Làm quiz
+            </Link>
           </div>
 
-          {/* Mini Premium Card */}
+          {/* Premium Card */}
           <div className="user-glass-card p-4 bg-gradient-to-br from-secondary/20 to-primary/20 border border-white/10">
             <p className="text-xs font-bold text-white mb-1 uppercase tracking-wider">Truy cập Premium</p>
             <p className="text-[10px] text-slate-300 mb-3 leading-relaxed">
               Mở khóa phản hồi AI và buổi học 1-1.
             </p>
-            <button className="w-full bg-white text-dark-500 py-2 rounded-xl text-xs font-bold hover:bg-primary hover:text-white transition-colors">
+            <Link
+              href="/user/wallet"
+              className="w-full block text-center bg-white text-dark-500 py-2 rounded-xl text-xs font-bold hover:bg-primary hover:text-white transition-colors"
+            >
               Nâng cấp ngay
-            </button>
+            </Link>
           </div>
         </div>
       </section>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Progress, Button, Result, Spin, Space, Typography } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useSubtitleSocket } from '@/hooks/use-subtitle-socket';
@@ -36,25 +37,27 @@ export function SubtitleGenerationModal({
   onSubtitleReady,
   onSubtitleError,
 }: SubtitleGenerationModalProps) {
-  const { progressPercent, stageLabel, error, completed, ready, failed, reset, isConnected } =
+  const { progressPercent, stageLabel, error, completed, ready, failed, reset, isConnected, jobCreated } =
     useSubtitleSocket({ videoId, enabled: open });
 
   const requestMutation = useRequestSubtitle();
   const { data: jobStatus } = useSubtitleJobStatus(
-    requestMutation.data?.jobId ?? null,
+    jobCreated?.jobId ?? requestMutation.data?.jobId ?? null,
   );
   const { data: existingSubtitle } = useSubtitle(videoId);
 
   // Determine current status
-  const status = useCallback((): 'idle' | 'requesting' | 'processing' | 'completed' | 'failed' | 'cached' => {
+  const status = useCallback((): 'idle' | 'requesting' | 'processing' | 'completed' | 'failed' | 'cached' | 'queued' => {
     if (requestMutation.isPending) return 'requesting';
     if (failed) return 'failed';
+    if (jobStatus?.status === 'FAILED') return 'failed';
     if (completed || ready) return 'completed';
     if (requestMutation.data?.status === 'CACHED' || requestMutation.data?.status === 'EXISTS') return 'cached';
-    if (requestMutation.data?.status === 'IN_PROGRESS') return 'processing';
+    // jobCreated from WebSocket arrives immediately when job is queued on server (before HTTP response)
+    if (jobCreated?.jobId) return 'queued';
     if (progressPercent > 0) return 'processing';
     return 'idle';
-  }, [requestMutation.isPending, requestMutation.data?.status, failed, completed, ready, progressPercent]);
+  }, [requestMutation.isPending, requestMutation.data?.status, requestMutation.data?.jobId, failed, completed, ready, progressPercent, jobCreated?.jobId, jobStatus?.status]);
 
   // Trigger subtitle ready callback
   useEffect(() => {
@@ -70,6 +73,13 @@ export function SubtitleGenerationModal({
     }
   }, [failed, onSubtitleError]);
 
+  // Also trigger error callback when polling detects FAILED status (WebSocket might not be connected)
+  useEffect(() => {
+    if (jobStatus?.status === 'FAILED' && jobStatus.errorMessage && onSubtitleError) {
+      onSubtitleError(jobStatus.errorMessage);
+    }
+  }, [jobStatus?.status, jobStatus?.errorMessage, onSubtitleError]);
+
   const handleRequest = async () => {
     reset();
     try {
@@ -79,21 +89,38 @@ export function SubtitleGenerationModal({
     }
   };
 
-  // Auto-request on open if no subtitle exists
+  const queryClient = useQueryClient();
+
+  // Invalidate job status query when WebSocket failed event arrives
+  // This ensures the jobStatus polling data is refreshed immediately
   useEffect(() => {
-    if (open && !existingSubtitle && !requestMutation.isPending && !requestMutation.data) {
+    if (failed?.jobId) {
+      queryClient.invalidateQueries({ queryKey: ['subtitle-job', failed.jobId] });
+    }
+  }, [failed?.jobId, queryClient]);
+
+  // When modal opens, re-fetch subtitle status to catch jobs created in previous sessions
+  useEffect(() => {
+    if (open && !existingSubtitle && !requestMutation.isPending && !requestMutation.data && !jobCreated) {
       handleRequest();
     }
-  }, [open, existingSubtitle, requestMutation.isPending, requestMutation.data]);
+  }, [open, existingSubtitle, requestMutation.isPending, requestMutation.data, jobCreated]);
 
   const renderContent = () => {
     const s = status();
 
-    if (s === 'requesting') {
+    if (s === 'requesting' || s === 'queued') {
       return (
         <div className="text-center py-8">
           <Spin size="large" />
-          <Text className="block mt-4">Processing request...</Text>
+          <Text className="block mt-4">
+            {s === 'requesting' ? 'Processing request...' : 'Job queued — waiting for processing...'}
+          </Text>
+          {s === 'queued' && (
+            <Text type="secondary" className="block mt-1 text-sm">
+              This usually takes a few seconds
+            </Text>
+          )}
         </div>
       );
     }
@@ -129,18 +156,20 @@ export function SubtitleGenerationModal({
     }
 
     if (s === 'failed') {
+      const failedError = failed?.error ?? jobStatus?.errorMessage ?? 'An unexpected error occurred';
+      const isRetryable = failed?.retryable ?? false;
       return (
         <Result
           status="error"
           icon={<CloseCircleOutlined className="text-red-500" />}
           title="Subtitle generation failed"
           subTitle={
-            failed?.retryable
-              ? `${failed.error} — will retry automatically`
-              : failed?.error ?? 'An unexpected error occurred'
+            isRetryable
+              ? `${failedError} — will retry automatically`
+              : failedError
           }
           extra={
-            failed?.retryable ? (
+            isRetryable ? (
               <Text type="secondary">Please wait while we retry...</Text>
             ) : (
               <Space direction="vertical" className="w-full">
@@ -162,9 +191,9 @@ export function SubtitleGenerationModal({
       );
     }
 
-    // Processing
+    // Processing (includes 'queued' state — job is queued but not started yet)
     const displayPercent = progressPercent ?? jobStatus?.progress ?? 0;
-    const displayStage = jobStatus?.stage ?? stageLabel ?? 'Processing...';
+    const displayStage = jobStatus?.stage ?? stageLabel ?? (s === 'queued' ? 'Job queued...' : 'Processing...');
     const stageText = SUBTITLE_STAGE_LABELS[displayStage] ?? displayStage;
 
     return (

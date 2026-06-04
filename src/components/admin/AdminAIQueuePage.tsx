@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Table, Tag, Button, Spin, Select, message, Popconfirm } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ReloadOutlined, StopOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { adminService, type AIJob } from '@/lib/api-services';
 
@@ -12,9 +12,43 @@ const STATUS_COLORS: Record<string, string> = {
   PROCESSING: 'orange',
   FAILED: 'red',
   COMPLETED: 'green',
+  DEAD_LETTER: 'purple',
+  CANCELLED: 'default',
 };
 
-const STAGE_ICONS: Record<string, React.ReactNode> = {
+const STATUS_LABELS: Record<string, string> = {
+  QUEUED: 'Đang chờ',
+  PROCESSING: 'Đang xử lý',
+  FAILED: 'Thất bại',
+  COMPLETED: 'Hoàn thành',
+  DEAD_LETTER: 'Dead letter',
+  CANCELLED: 'Đã huỷ',
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  WHISPER_TRANSCRIPTION: 'Chuyển âm',
+  TRANSLATION: 'Dịch thuật',
+  VOCABULARY_ANALYSIS: 'Phân tích từ vựng',
+  QUIZ_GENERATION: 'Tạo quiz',
+  SUBTITLE_SYNC: 'Đồng bộ phụ đề',
+  SUBTITLE_GENERATION: 'Tạo phụ đề',
+};
+
+const STAGE_LABELS: Record<string, string> = {
+  PENDING: 'Đang chờ',
+  DOWNLOADING: 'Đang tải',
+  EXTRACTING_AUDIO: 'Tách âm thanh',
+  TRANSCRIBING: 'Đang chuyển âm',
+  TRANSLATING: 'Đang dịch',
+  SYNCING: 'Đang đồng bộ',
+  UPLOADING: 'Đang tải lên',
+  COMPLETED: 'Hoàn thành',
+  FAILED: 'Thất bại',
+  DONE: 'Xong',
+  CANCELLED: 'Đã huỷ',
+};
+
+const STAGE_ICONS: Record<string, string> = {
   PENDING: '⏳',
   DOWNLOADING: '📥',
   EXTRACTING_AUDIO: '🎵',
@@ -22,7 +56,9 @@ const STAGE_ICONS: Record<string, React.ReactNode> = {
   TRANSLATING: '🌐',
   SYNCING: '⏱️',
   UPLOADING: '☁️',
+  COMPLETED: '✅',
   DONE: '✅',
+  FAILED: '❌',
   CANCELLED: '🚫',
 };
 
@@ -37,7 +73,7 @@ export default function AdminAIQueuePage() {
     try {
       const res = await adminService.getAIQueue({ status: status || undefined });
       setJobs(res.data.data);
-    } catch { message.error('Lỗi tải queue'); }
+    } catch { message.error('Lỗi tải hàng đợi AI'); }
     finally { setLoading(false); }
   };
 
@@ -47,9 +83,9 @@ export default function AdminAIQueuePage() {
     setActionId(id);
     try {
       await adminService.retryAIJob(id);
-      message.success('Đã retry job');
+      message.success('Đã thử lại job');
       load();
-    } catch { message.error('Lỗi retry'); }
+    } catch { message.error('Lỗi thử lại job'); }
     finally { setActionId(null); }
   };
 
@@ -57,15 +93,15 @@ export default function AdminAIQueuePage() {
     setActionId(id);
     try {
       await adminService.cancelAIJob(id);
-      message.success('Đã cancel job');
+      message.success('Đã huỷ job');
       load();
-    } catch { message.error('Lỗi cancel'); }
+    } catch { message.error('Lỗi huỷ job'); }
     finally { setActionId(null); }
   };
 
   const columns: ColumnsType<AIJob> = [
     {
-      title: 'User',
+      title: 'Người dùng',
       key: 'user',
       render: (_, record) => (
         <div>
@@ -84,27 +120,31 @@ export default function AdminAIQueuePage() {
       ),
     },
     {
-      title: 'Type',
+      title: 'Loại',
       dataIndex: 'type',
       key: 'type',
-      render: (t: string) => <Tag className="!rounded-full">{t}</Tag>,
+      render: (t: string) => <Tag className="!rounded-full">{TYPE_LABELS[t] || t}</Tag>,
     },
     {
-      title: 'Stage',
+      title: 'Giai đoạn',
       dataIndex: 'stage',
       key: 'stage',
       render: (s: string) => (
-        <span className="text-lg">{STAGE_ICONS[s] || '🔄'} <span className="text-xs text-slate-400">{s}</span></span>
+        <span className="text-lg">{STAGE_ICONS[s] || '🔄'} <span className="text-xs text-slate-400">{STAGE_LABELS[s] || s}</span></span>
       ),
     },
     {
-      title: 'Status',
+      title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      render: (s: string) => <Tag color={STATUS_COLORS[s] || 'default'} className="!rounded-full">{s}</Tag>,
+      render: (s: string) => (
+        <Tag color={STATUS_COLORS[s] || 'default'} className="!rounded-full">
+          {STATUS_LABELS[s] || s}
+        </Tag>
+      ),
     },
     {
-      title: 'Progress',
+      title: 'Tiến trình',
       dataIndex: 'progress',
       key: 'progress',
       render: (p: number) => (
@@ -117,13 +157,13 @@ export default function AdminAIQueuePage() {
       ),
     },
     {
-      title: 'Retries',
+      title: 'Thử lại',
       dataIndex: 'retryCount',
       key: 'retryCount',
       render: (r: number) => <span className={r > 0 ? 'text-red-400' : 'text-slate-400'}>{r}x</span>,
     },
     {
-      title: 'Created',
+      title: 'Tạo lúc',
       dataIndex: 'createdAt',
       key: 'createdAt',
       render: (t: string) => (
@@ -131,21 +171,21 @@ export default function AdminAIQueuePage() {
       ),
     },
     {
-      title: 'Actions',
+      title: 'Hành động',
       key: 'actions',
       render: (_, record) => (
         <div className="flex gap-2">
-          {(record.status === 'FAILED') && (
-            <Popconfirm title="Retry this job?" onConfirm={() => handleRetry(record.id)} okText="Retry">
+          {(record.status === 'FAILED' || record.status === 'DEAD_LETTER') && (
+            <Popconfirm title="Thử lại job này?" onConfirm={() => handleRetry(record.id)} okText="Thử lại">
               <Button size="small" type="primary" loading={actionId === record.id} icon={<ReloadOutlined />} className="!rounded-lg !text-xs !bg-green-500 !border-green-500">
-                Retry
+                Thử lại
               </Button>
             </Popconfirm>
           )}
           {(record.status === 'QUEUED' || record.status === 'PROCESSING') && (
-            <Popconfirm title="Cancel this job?" onConfirm={() => handleCancel(record.id)} okText="Cancel">
+            <Popconfirm title="Huỷ job này?" onConfirm={() => handleCancel(record.id)} okText="Huỷ">
               <Button size="small" danger loading={actionId === record.id} icon={<StopOutlined />} className="!rounded-lg !text-xs">
-                Cancel
+                Huỷ
               </Button>
             </Popconfirm>
           )}
@@ -160,16 +200,16 @@ export default function AdminAIQueuePage() {
         <h2 className="text-2xl font-black text-white">AI Queue</h2>
         <div className="flex items-center gap-3">
           <Select
-            placeholder="Tất cả"
+            placeholder="Tất cả trạng thái"
             allowClear
-            className="!w-40"
+            className="!w-44"
             value={status || undefined}
             onChange={(v) => setStatus(v || '')}
             options={[
-              { value: 'QUEUED', label: 'Queued' },
-              { value: 'PROCESSING', label: 'Processing' },
-              { value: 'FAILED', label: 'Failed' },
-              { value: 'COMPLETED', label: 'Completed' },
+              { value: 'QUEUED', label: 'Đang chờ' },
+              { value: 'PROCESSING', label: 'Đang xử lý' },
+              { value: 'FAILED', label: 'Thất bại' },
+              { value: 'COMPLETED', label: 'Hoàn thành' },
             ]}
           />
           <Button onClick={load} className="!rounded-xl">Làm mới</Button>

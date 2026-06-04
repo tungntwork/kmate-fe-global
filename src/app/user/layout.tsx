@@ -18,24 +18,23 @@ export default function UserLayout({
   const { isAuthenticated, _hasHydrated } = useAuthStore();
   const sidebarWidth = collapsed ? 80 : 260;
 
-  // TODO: re-enable auth guard before production
+  // Auth guard
   useEffect(() => {
-    // if (!_hasHydrated) return;
-    // if (!isAuthenticated) {
-    //   router.replace('/login');
-    // }
+    if (!_hasHydrated) return;
+    if (!isAuthenticated) {
+      router.replace('/login');
+    }
   }, [_hasHydrated, isAuthenticated, router]);
 
-  // TODO: re-enable hydration check before production
-  // if (!_hasHydrated) {
-  //   return (
-  //     <div className="flex items-center justify-center h-screen bg-background-dark">
-  //       <Spin size="large" />
-  //     </div>
-  //   );
-  // }
-  // TODO: re-enable auth guard before production
-  // if (!isAuthenticated) return null;
+  if (!_hasHydrated) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background-dark">
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return null;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background-dark">
@@ -47,7 +46,7 @@ export default function UserLayout({
       >
         <UserHeader />
 
-        <main className="flex-1 overflow-y-auto pt-16">
+        <main className="flex-1 overflow-y-auto">
           <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-400 text-sm">Loading...</div>}>
             {children}
           </Suspense>

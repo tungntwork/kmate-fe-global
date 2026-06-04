@@ -3,21 +3,33 @@
 import { useState, useEffect } from 'react';
 import {
   SearchOutlined,
-  DollarOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
 } from '@ant-design/icons';
-import { Table, Input, Button, Tag, Spin, Select, message } from 'antd';
+import { Table, Button, Tag, Spin, Select, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { adminService, type AdminPayment } from '@/lib/api-services';
+
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Đang chờ',
+  SUCCESS: 'Thành công',
+  FAILED: 'Thất bại',
+  PROCESSING: 'Đang xử lý',
+  EXPIRED: 'Hết hạn',
+  REFUNDED: 'Đã hoàn tiền',
+  CANCELLED: 'Đã huỷ',
+};
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: 'orange',
   SUCCESS: 'green',
   FAILED: 'red',
+  PROCESSING: 'blue',
   EXPIRED: 'default',
+  REFUNDED: 'purple',
+  CANCELLED: 'default',
 };
 
 export default function AdminPaymentsPage() {
@@ -34,7 +46,7 @@ export default function AdminPaymentsPage() {
       setPayments(res.data.data);
       setTotal(res.data.pagination.total);
       setPage(pg);
-    } catch { message.error('Lỗi tải payments'); }
+    } catch { message.error('Lỗi tải giao dịch'); }
     finally { setLoading(false); }
   };
 
@@ -42,7 +54,7 @@ export default function AdminPaymentsPage() {
 
   const columns: ColumnsType<AdminPayment> = [
     {
-      title: 'User',
+      title: 'Người dùng',
       key: 'user',
       render: (_, record) => (
         <div>
@@ -56,17 +68,17 @@ export default function AdminPaymentsPage() {
       dataIndex: 'amount',
       key: 'amount',
       render: (v: number) => (
-        <span className="text-green-400 font-bold">{v.toLocaleString()}đ</span>
+        <span className="text-green-400 font-bold">{v.toLocaleString('vi-VN')} đ</span>
       ),
     },
     {
-      title: 'Coin',
+      title: 'Xu',
       dataIndex: 'coinAmount',
       key: 'coinAmount',
       render: (c: number) => <span className="text-secondary font-bold">{c} Xu</span>,
     },
     {
-      title: 'Order Code',
+      title: 'Mã đơn hàng',
       dataIndex: 'payosOrderCode',
       key: 'payosOrderCode',
       render: (c: string | null) => (
@@ -79,10 +91,10 @@ export default function AdminPaymentsPage() {
       render: (_, record) => {
         const icon = record.status === 'SUCCESS' ? <CheckCircleOutlined /> :
           record.status === 'PENDING' ? <ClockCircleOutlined /> :
-          record.status === 'FAILED' ? <CloseCircleOutlined /> : null;
+          record.status === 'FAILED' || record.status === 'EXPIRED' ? <CloseCircleOutlined /> : null;
         return (
           <Tag color={STATUS_COLORS[record.status] || 'default'} icon={icon} className="!rounded-full">
-            {record.status}
+            {STATUS_LABELS[record.status] || record.status}
           </Tag>
         );
       },
@@ -107,14 +119,14 @@ export default function AdminPaymentsPage() {
           <Select
             placeholder="Tất cả trạng thái"
             allowClear
-            className="!w-40"
+            className="!w-44"
             value={status || undefined}
             onChange={(v) => { setStatus(v || ''); load(1, v || ''); }}
             options={[
-              { value: 'PENDING', label: 'Pending' },
-              { value: 'SUCCESS', label: 'Success' },
-              { value: 'FAILED', label: 'Failed' },
-              { value: 'EXPIRED', label: 'Expired' },
+              { value: 'PENDING', label: 'Đang chờ' },
+              { value: 'SUCCESS', label: 'Thành công' },
+              { value: 'FAILED', label: 'Thất bại' },
+              { value: 'EXPIRED', label: 'Hết hạn' },
             ]}
           />
         </div>

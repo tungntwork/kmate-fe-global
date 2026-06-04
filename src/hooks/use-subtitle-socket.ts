@@ -46,6 +46,13 @@ export interface SubtitleReady {
   timestamp: number;
 }
 
+export interface SubtitleJobCreated {
+  jobId: string;
+  videoId: string;
+  status: string;
+  timestamp: number;
+}
+
 export interface SubtitleSocketState {
   progress: SubtitleJobProgress | null;
   completed: SubtitleJobCompleted | null;
@@ -53,6 +60,7 @@ export interface SubtitleSocketState {
   ready: SubtitleReady | null;
   error: string | null;
   isConnected: boolean;
+  jobCreated: SubtitleJobCreated | null;
 }
 
 /**
@@ -70,6 +78,7 @@ export function useSubtitleSocket(options: UseSubtitleSocketOptions = {}) {
     ready: null,
     error: null,
     isConnected: false,
+    jobCreated: null,
   });
 
   // Stable state setters to avoid re-registration of listeners
@@ -110,6 +119,13 @@ export function useSubtitleSocket(options: UseSubtitleSocketOptions = {}) {
     setState((prev) => ({ ...prev, error: message }));
   }, []);
 
+  const setJobCreated = useCallback((data: SubtitleJobCreated) => {
+    setState((prev) => ({
+      ...prev,
+      jobCreated: { ...data, timestamp: data.timestamp || Date.now() },
+    }));
+  }, []);
+
   useEffect(() => {
     if (!enabled) return;
 
@@ -139,6 +155,7 @@ export function useSubtitleSocket(options: UseSubtitleSocketOptions = {}) {
     });
 
     // Subtitle processing events
+    socket.on('subtitle:job-created', setJobCreated);
     socket.on('subtitle:job-progress', setProgress);
     socket.on('subtitle:job-completed', setCompleted);
     socket.on('subtitle:job-failed', setFailed);
@@ -148,6 +165,7 @@ export function useSubtitleSocket(options: UseSubtitleSocketOptions = {}) {
     });
 
     return () => {
+      socket.off('subtitle:job-created', setJobCreated);
       socket.off('subtitle:job-progress', setProgress);
       socket.off('subtitle:job-completed', setCompleted);
       socket.off('subtitle:job-failed', setFailed);
@@ -156,7 +174,7 @@ export function useSubtitleSocket(options: UseSubtitleSocketOptions = {}) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [enabled, setProgress, setCompleted, setFailed, setReady, setError]);
+  }, [enabled, setProgress, setCompleted, setFailed, setReady, setError, setJobCreated]);
 
   /**
    * Reset the state to initial values.
@@ -168,6 +186,7 @@ export function useSubtitleSocket(options: UseSubtitleSocketOptions = {}) {
       failed: null,
       ready: null,
       error: null,
+      jobCreated: null,
       isConnected: state.isConnected,
     });
   }, [state.isConnected]);

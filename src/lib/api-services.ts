@@ -114,6 +114,12 @@ export const adminService = {
   unbanUser: (id: string) =>
     api.post(`/admin/users/${id}/unban`),
 
+  grantCoins: (id: string, data: { amount: number; reason?: string }) =>
+    api.post<{ data: { balance: number; amount: number; notificationId: string } }>(
+      `/admin/users/${id}/grant-coins`,
+      data,
+    ),
+
   getTransactions: (params?: { page?: number; limit?: number }) =>
     api.get<{ data: AdminTransaction[]; pagination: Pagination }>('/admin/transactions', { params }),
 
@@ -434,5 +440,300 @@ export interface AdminAnalytics {
     minutesLearned: number;
     flashcardsReviewed: number;
     quizzesTaken: number;
+    coinsEarned: number;
+    coinsSpent: number;
+  }>;
+  revenueStats: Array<{ date: string; amount: number }>;
+  paymentBreakdown: Array<{ status: string; count: number; totalAmount: number }>;
+  userStats: {
+    total: number;
+    newLast30d: number;
+    activeLast7d: number;
+    roleBreakdown: Array<{ role: string; count: number }>;
+  };
+  aiJobStats: {
+    queued: number;
+    processing: number;
+    completed: number;
+    failed: number;
+    deadLetter: number;
+    total: number;
+    typeBreakdown: Array<{ type: string; count: number }>;
+  };
+  platformStats: Array<{
+    date: string;
+    newUsers: number;
+    activeUsers: number;
+    totalVideosWatched: number;
+    totalMinutesLearned: number;
+    totalRevenue: number;
   }>;
 }
+
+// ============================================================
+// VIDEO DISCOVERY
+// ============================================================
+export interface VideoSearchResult {
+  youtubeId: string;
+  title: string;
+  description: string;
+  thumbnail: string;
+  duration: number;
+  channelId: string;
+  channelTitle: string;
+  publishedAt: string;
+  viewCount: number;
+  language: string;
+  hasSubtitles: boolean;
+  subtitleLanguages: string[];
+  isKoreanVideo: boolean;
+  relevanceScore: number;
+  cachedAt: string;
+}
+
+export interface VideoDetailResult extends VideoSearchResult {
+  tags: string[];
+  category: string;
+  likes?: number;
+  comments?: number;
+}
+
+export const videoService = {
+  discoverSearch: (params: {
+    q: string;
+    page?: number;
+    limit?: number;
+    sort?: string;
+    duration?: string;
+    subtitleFilter?: string;
+    language?: string;
+  }) =>
+    api.get<{ data: { videos: VideoSearchResult[]; pagination: Pagination } }>('/videos/discover/search', { params }),
+
+  discoverTrending: (params?: { page?: number; limit?: number; regionCode?: string }) =>
+    api.get<{ data: { videos: VideoSearchResult[]; pagination: Pagination } }>('/videos/discover/trending', { params }),
+
+  discoverVideo: (youtubeId: string) =>
+    api.get<{ data: VideoDetailResult }>(`/videos/discover/${youtubeId}`),
+
+  search: (params: { q: string; page?: number; limit?: number }) =>
+    api.get<{ data: VideoSearchResult[] }>('/videos/search', { params }),
+
+  getVideo: (id: string) =>
+    api.get<{ data: unknown }>(`/videos/${id}`),
+
+  unlockVideo: (id: string) =>
+    api.post(`/videos/${id}/unlock`),
+
+  getProgress: (id: string) =>
+    api.get<{ data: unknown }>(`/videos/${id}/progress`),
+
+  updateProgress: (id: string, data: { currentTime: number; duration: number }) =>
+    api.put(`/videos/${id}/progress`, data),
+};
+
+// ============================================================
+// SHORTS
+// ============================================================
+export interface Short {
+  id: string;
+  youtubeId: string;
+  title: string;
+  thumbnail: string;
+  duration: number;
+  viewCount: number;
+  likeCount: number;
+  isLiked: boolean;
+  createdAt: string;
+}
+
+export const shortsService = {
+  getFeed: (params?: { page?: number; limit?: number }) =>
+    api.get<{ data: Short[] }>('/shorts/feed', { params }),
+
+  getShort: (id: string) =>
+    api.get<{ data: Short }>(`/shorts/${id}`),
+
+  recordView: (id: string) =>
+    api.post(`/shorts/${id}/view`),
+
+  toggleLike: (id: string) =>
+    api.post(`/shorts/${id}/like`),
+
+  list: (params?: { page?: number; limit?: number }) =>
+    api.get<{ data: Short[] }>('/shorts', { params }),
+};
+
+// ============================================================
+// FLASHCARDS
+// ============================================================
+export interface Flashcard {
+  id: string;
+  deckId: string;
+  front: string;
+  back: string;
+  example?: string;
+  pronunciation?: string;
+  interval: number;
+  easeFactor: number;
+  repetitions: number;
+  nextReview: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FlashcardDeck {
+  id: string;
+  name: string;
+  description: string | null;
+  cardCount: number;
+  dueCount: number;
+  color: string;
+  createdAt: string;
+}
+
+export interface FlashcardStats {
+  totalCards: number;
+  dueToday: number;
+  newCards: number;
+  reviewedToday: number;
+  streak: number;
+}
+
+export const flashcardService = {
+  getDecks: () =>
+    api.get<{ data: FlashcardDeck[] }>('/flashcards/decks'),
+
+  createDeck: (data: { name: string; description?: string; color?: string }) =>
+    api.post<{ data: FlashcardDeck }>('/flashcards/decks', data),
+
+  updateDeck: (id: string, data: Partial<{ name: string; description: string; color: string }>) =>
+    api.put<{ data: FlashcardDeck }>(`/flashcards/decks/${id}`, data),
+
+  deleteDeck: (id: string) =>
+    api.delete(`/flashcards/decks/${id}`),
+
+  getFlashcards: (params?: { deckId?: string; page?: number; limit?: number }) =>
+    api.get<{ data: Flashcard[]; pagination: Pagination }>('/flashcards', { params }),
+
+  createFlashcard: (data: { deckId: string; front: string; back: string; example?: string; pronunciation?: string }) =>
+    api.post<{ data: Flashcard }>('/flashcards', data),
+
+  updateFlashcard: (id: string, data: Partial<{ front: string; back: string; example: string; pronunciation: string }>) =>
+    api.put<{ data: Flashcard }>(`/flashcards/${id}`, data),
+
+  deleteFlashcard: (id: string) =>
+    api.delete(`/flashcards/${id}`),
+
+  getDue: () =>
+    api.get<{ data: Flashcard[] }>('/flashcards/due'),
+
+  review: (data: { flashcardId: string; quality: number }) =>
+    api.post<{ data: Flashcard }>('/flashcards/review', data),
+
+  getStats: () =>
+    api.get<{ data: FlashcardStats }>('/flashcards/stats'),
+};
+
+// ============================================================
+// QUIZ
+// ============================================================
+export interface QuizQuestion {
+  id: string;
+  type: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation?: string;
+}
+
+export interface Quiz {
+  id: string;
+  videoId: string;
+  title: string;
+  questions: QuizQuestion[];
+  totalQuestions: number;
+  timeLimit: number;
+  difficulty: string;
+  isCompleted: boolean;
+  score?: number;
+}
+
+export interface QuizResult {
+  quizId: string;
+  score: number;
+  totalQuestions: number;
+  correctAnswers: number;
+  xpEarned: number;
+  coinEarned: number;
+  timeTaken: number;
+}
+
+export const quizService = {
+  getQuiz: (videoId: string) =>
+    api.get<{ data: Quiz }>(`/quiz/${videoId}`),
+
+  submitQuiz: (data: { videoId: string; answers: Record<string, number>; timeTaken: number }) =>
+    api.post<{ data: QuizResult }>('/quiz/submit', data),
+
+  getHistory: (params?: { page?: number; limit?: number }) =>
+    api.get<{ data: unknown[]; pagination: Pagination }>('/quiz/history', { params }),
+};
+
+// ============================================================
+// SUBTITLES
+// ============================================================
+export interface Subtitle {
+  id: string;
+  videoId: string;
+  language: string;
+  isAutoGenerated: boolean;
+  subtitleContent: unknown; // JSON array from Prisma
+  bilingualContent: unknown; // JSON array from Prisma
+  source: string;
+  createdAt: string;
+}
+
+export const subtitleService = {
+  getSubtitles: (videoId: string) =>
+    api.get<{ data: { videoId: string; subtitles: Subtitle[] } }>(`/subtitles/${videoId}`),
+
+  requestGeneration: (data: { videoId: string; language?: string }) =>
+    api.post<{ data: { jobId: string; videoId: string; status: string } }>('/subtitles/generate', data),
+
+  getJobStatus: (jobId: string) =>
+    api.get<{ data: { id: string; status: string; progress: number; stage: string } }>(`/subtitles/jobs/${jobId}`),
+
+  listJobs: () =>
+    api.get<{ data: unknown[] }>('/subtitles/jobs'),
+
+  cancelJob: (jobId: string) =>
+    api.delete(`/subtitles/jobs/${jobId}`),
+};
+
+// ============================================================
+// WAITING / AI JOBS
+// ============================================================
+export interface WaitingJob {
+  id: string;
+  videoId: string;
+  status: string;
+  progress: number;
+  stage: string;
+  estimatedTime: number;
+  createdAt: string;
+}
+
+export const waitingService = {
+  getJobStatus: (jobId: string) =>
+    api.get<{ data: WaitingJob }>(`/waiting/jobs/${jobId}`),
+
+  getJobProgress: (jobId: string) =>
+    api.get<{ data: { progress: number; stage: string; estimatedTime: number } }>(`/waiting/jobs/${jobId}/progress`),
+
+  cancelJob: (jobId: string) =>
+    api.post(`/waiting/jobs/${jobId}/cancel`),
+
+  deleteJob: (jobId: string) =>
+    api.delete(`/waiting/jobs/${jobId}`),
+};

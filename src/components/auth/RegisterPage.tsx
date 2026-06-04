@@ -8,6 +8,7 @@ import { MailOutlined, LockOutlined, UserOutlined, EyeInvisibleOutlined, EyeTwoT
 import { motion } from 'framer-motion';
 import imgKMATELOGO from '../../../assets/img/branding/KMATELOGO.png';
 import { authService } from '@/lib/api-services';
+import { useAuthStore } from '@/store/auth.store';
 
 export function RegisterPage() {
   const [fullName, setFullName] = useState('');
@@ -44,12 +45,18 @@ export function RegisterPage() {
 
     setLoading(true);
     try {
-      await authService.register({ name: fullName, email, password });
+      const response = await authService.register({ name: fullName, email, password });
+      const { accessToken, refreshToken, user } = response.data.data;
+      localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+      const { setTokens, setUser } = useAuthStore.getState();
+      setTokens(accessToken, refreshToken);
+      setUser(user);
       message.success('Đăng ký thành công! Đang chuyển hướng...');
-      setTimeout(() => { window.location.href = '/dashboard'; }, 500);
+      setTimeout(() => { window.location.href = '/user/dashboard'; }, 500);
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } } };
-      setError(error.response?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.');
+      const error = err as { response?: { data?: { error?: { message?: string } } };
+      setError(error.response?.data?.error?.message || 'Đăng ký thất bại. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }

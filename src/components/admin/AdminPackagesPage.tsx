@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Table, Button, Tag, Input, Modal, message, Popconfirm, InputNumber, Switch } from 'antd';
+import { Table, Button, Tag, Input, Modal, message, InputNumber, Switch } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, EditOutlined } from '@ant-design/icons';
 import { adminService, type CoinPackageAdmin, type PackageInput } from '@/lib/api-services';
@@ -21,7 +21,7 @@ export default function AdminPackagesPage() {
     try {
       const res = await adminService.getPackages();
       setPackages(res.data.data);
-    } catch { message.error('Lỗi tải packages'); }
+    } catch { message.error('Lỗi tải gói coins'); }
     finally { setLoading(false); }
   };
 
@@ -35,7 +35,10 @@ export default function AdminPackagesPage() {
 
   const openEdit = (pkg: CoinPackageAdmin) => {
     setEditing(pkg);
-    setForm({ name: pkg.name, description: pkg.description ?? '', coinAmount: pkg.coinAmount, bonusCoinAmount: pkg.bonusCoinAmount ?? 0, price: pkg.price, isActive: pkg.isActive, sortOrder: pkg.sortOrder });
+    setForm({
+      name: pkg.name, description: pkg.description ?? '', coinAmount: pkg.coinAmount,
+      bonusCoinAmount: pkg.bonusCoinAmount ?? 0, price: pkg.price, isActive: pkg.isActive, sortOrder: pkg.sortOrder,
+    });
     setEditModal(true);
   };
 
@@ -45,30 +48,70 @@ export default function AdminPackagesPage() {
     try {
       if (editing) {
         await adminService.updatePackage(editing.id, form);
-        message.success('Đã cập nhật');
+        message.success('Đã cập nhật gói coins');
       } else {
         await adminService.createPackage(form);
-        message.success('Đã tạo');
+        message.success('Đã tạo gói coins');
       }
       setEditModal(false);
       load();
-    } catch { message.error('Lỗi lưu'); }
+    } catch { message.error('Lỗi lưu gói coins'); }
     finally { setSaving(false); }
   };
 
+  const handleToggleActive = async (pkg: CoinPackageAdmin) => {
+    try {
+      await adminService.updatePackage(pkg.id, { ...pkg, isActive: !pkg.isActive });
+      load();
+    } catch { message.error('Lỗi cập nhật trạng thái'); }
+  };
+
   const columns: ColumnsType<CoinPackageAdmin> = [
-    { title: 'Tên', dataIndex: 'name', key: 'name', render: (n: string) => <span className="text-white font-medium">{n}</span> },
-    { title: 'Coin', dataIndex: 'coinAmount', key: 'coinAmount', render: (c: number) => <span className="text-secondary font-bold text-lg">{c} Xu</span> },
-    { title: 'Bonus', dataIndex: 'bonusCoinAmount', key: 'bonusCoinAmount', render: (b: number) => b > 0 ? <Tag color="cyan">+{b} Bonus</Tag> : <span className="text-slate-600">—</span> },
-    { title: 'Giá', dataIndex: 'price', key: 'price', render: (p: number) => <span className="text-green-400 font-bold">{p.toLocaleString()}đ</span> },
-    { title: 'Thứ tự', dataIndex: 'sortOrder', key: 'sortOrder', render: (s: number) => <span className="text-slate-400">{s}</span> },
     {
-      title: 'Active',
-      key: 'isActive',
-      render: (_, record) => <Tag color={record.isActive ? 'green' : 'default'} className="!rounded-full">{record.isActive ? 'Active' : 'Inactive'}</Tag>,
+      title: 'Tên gói',
+      dataIndex: 'name',
+      key: 'name',
+      render: (n: string) => <span className="text-white font-medium">{n}</span>,
     },
     {
-      title: 'Actions',
+      title: 'Xu',
+      dataIndex: 'coinAmount',
+      key: 'coinAmount',
+      render: (c: number) => <span className="text-secondary font-bold text-lg">{c} Xu</span>,
+    },
+    {
+      title: 'Thưởng',
+      dataIndex: 'bonusCoinAmount',
+      key: 'bonusCoinAmount',
+      render: (b: number) => b > 0 ? <Tag color="cyan" className="!rounded-full">+{b} Xu</Tag> : <span className="text-slate-600">—</span>,
+    },
+    {
+      title: 'Giá tiền',
+      dataIndex: 'price',
+      key: 'price',
+      render: (p: number) => <span className="text-green-400 font-bold">{p.toLocaleString('vi-VN')} đ</span>,
+    },
+    {
+      title: 'Thứ tự',
+      dataIndex: 'sortOrder',
+      key: 'sortOrder',
+      render: (s: number) => <span className="text-slate-400">{s}</span>,
+    },
+    {
+      title: 'Trạng thái',
+      key: 'isActive',
+      render: (_, record) => (
+        <Tag
+          color={record.isActive ? 'green' : 'default'}
+          className="!rounded-full cursor-pointer"
+          onClick={() => handleToggleActive(record)}
+        >
+          {record.isActive ? 'Bật' : 'Tắt'}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Hành động',
       key: 'actions',
       render: (_, record) => (
         <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} className="!rounded-lg !text-xs" />
@@ -79,16 +122,22 @@ export default function AdminPackagesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-black text-white">Coin Packages</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} className="!rounded-xl !font-bold" style={{ background: 'linear-gradient(135deg, #7C4DFF, #00e5ff)' }}>
-          Tạo Package
+        <h2 className="text-2xl font-black text-white">Gói Coins</h2>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={openCreate}
+          className="!rounded-xl !font-bold"
+          style={{ background: 'linear-gradient(135deg, #7C4DFF, #00e5ff)' }}
+        >
+          Tạo gói
         </Button>
       </div>
 
       <Table columns={columns} dataSource={packages} rowKey="id" loading={loading} pagination={false} className="kmate-table" />
 
       <Modal
-        title={<span className="text-white font-bold">{editing ? 'Sửa Package' : 'Tạo Package'}</span>}
+        title={<span className="text-white font-bold">{editing ? 'Sửa gói coins' : 'Tạo gói coins'}</span>}
         open={editModal}
         onCancel={() => setEditModal(false)}
         footer={null}
@@ -97,24 +146,30 @@ export default function AdminPackagesPage() {
         <div className="py-4 space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Tên gói</label>
-            <Input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Gói 100 Xu" className="!rounded-xl" />
+            <Input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="VD: Gói 100 Xu" className="!rounded-xl" />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Mô tả</label>
-              <Input.TextArea value={form.description ?? ''} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={2} className="!rounded-xl" />
+            <Input.TextArea value={form.description ?? ''} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={2} className="!rounded-xl" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Số coin</label>
+              <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Số Xu</label>
               <InputNumber min={1} value={form.coinAmount} onChange={(v) => setForm((p) => ({ ...p, coinAmount: v ?? 0 }))} className="!w-full !rounded-xl" />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Bonus coin</label>
+              <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Xu thưởng</label>
               <InputNumber min={0} value={form.bonusCoinAmount} onChange={(v) => setForm((p) => ({ ...p, bonusCoinAmount: v ?? 0 }))} className="!w-full !rounded-xl" />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Giá (VND)</label>
-              <InputNumber min={0} value={form.price} onChange={(v) => setForm((p) => ({ ...p, price: v ?? 0 }))} className="!w-full !rounded-xl" formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} />
+              <InputNumber
+                min={0}
+                value={form.price}
+                onChange={(v) => setForm((p) => ({ ...p, price: v ?? 0 }))}
+                className="!w-full !rounded-xl"
+                formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Thứ tự</label>
@@ -122,12 +177,19 @@ export default function AdminPackagesPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-400">Active:</span>
+            <span className="text-sm text-slate-400">Bật:</span>
             <Switch checked={form.isActive} onChange={(v) => setForm((p) => ({ ...p, isActive: v }))} />
           </div>
           <div className="flex gap-3 pt-2">
             <Button block onClick={() => setEditModal(false)} className="!rounded-xl">Huỷ</Button>
-            <Button type="primary" block loading={saving} onClick={handleSave} className="!rounded-xl !font-bold" style={{ background: 'linear-gradient(135deg, #7C4DFF, #00e5ff)' }}>
+            <Button
+              type="primary"
+              block
+              loading={saving}
+              onClick={handleSave}
+              className="!rounded-xl !font-bold"
+              style={{ background: 'linear-gradient(135deg, #7C4DFF, #00e5ff)' }}
+            >
               Lưu
             </Button>
           </div>

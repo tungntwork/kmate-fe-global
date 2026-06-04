@@ -46,7 +46,7 @@ import {
 } from '@ant-design/icons';
 import ReactSimplyCarousel from 'react-simply-carousel';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 const heroSlides = [
   {
     src: imgBts,
@@ -83,21 +83,25 @@ const heroSlides = [
 // ===== SLIDER COMPONENT =====
 function HeroSlider({ onSlideChange }: { onSlideChange?: (idx: number) => void }) {
   const [current, setCurrent] = useState(0);
+  const onSlideChangeRef = useRef(onSlideChange);
+  onSlideChangeRef.current = onSlideChange;
 
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrent((prev: number) => {
         const next = (prev + 1) % heroSlides.length;
-        onSlideChange?.(next);
         return next;
       });
     }, 5000);
     return () => clearInterval(timer);
-  }, [onSlideChange]);
+  }, []);
+
+  useEffect(() => {
+    onSlideChangeRef.current?.(current);
+  }, [current]);
 
   const handleClick = (idx: number) => {
     setCurrent(idx);
-    onSlideChange?.(idx);
   };
 
   return (
@@ -116,6 +120,7 @@ function HeroSlider({ onSlideChange }: { onSlideChange?: (idx: number) => void }
             src={heroSlides[current].src}
             alt={heroSlides[current].alt}
             fill
+            sizes="(max-width: 768px) 100vw, 50vw"
             className="object-cover"
             priority
           />
@@ -714,6 +719,7 @@ export function LandingPage() {
                   src={heroSlides[currentHeroSlide].src}
                   alt=""
                   fill
+                  sizes="100vw"
                   className="object-cover"
                 />
               </motion.div>

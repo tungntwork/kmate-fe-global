@@ -28,7 +28,7 @@ export default function AdminUsersPage() {
       setUsers(res.data.data);
       setTotal(res.data.pagination.total);
       setPage(pg);
-    } catch { message.error('Lỗi tải users'); }
+    } catch { message.error('Lỗi tải người dùng'); }
     finally { setLoading(false); }
   };
 
@@ -39,8 +39,8 @@ export default function AdminUsersPage() {
     try {
       await adminService.banUser(id);
       setUsers((prev) => prev.map((u) => u.id === id ? { ...u, isBanned: true } : u));
-      message.success('Đã ban user');
-    } catch { message.error('Lỗi ban user'); }
+      message.success('Đã cấm người dùng');
+    } catch { message.error('Lỗi cấm người dùng'); }
     finally { setActionId(null); }
   };
 
@@ -49,14 +49,14 @@ export default function AdminUsersPage() {
     try {
       await adminService.unbanUser(id);
       setUsers((prev) => prev.map((u) => u.id === id ? { ...u, isBanned: false } : u));
-      message.success('Đã unban user');
-    } catch { message.error('Lỗi unban user'); }
+      message.success('Đã mở cấm người dùng');
+    } catch { message.error('Lỗi mở cấm người dùng'); }
     finally { setActionId(null); }
   };
 
   const columns: ColumnsType<AdminUser> = [
     {
-      title: 'User',
+      title: 'Người dùng',
       key: 'user',
       render: (_, record) => (
         <div className="flex items-center gap-3">
@@ -69,10 +69,14 @@ export default function AdminUsersPage() {
       ),
     },
     {
-      title: 'Role',
+      title: 'Vai trò',
       dataIndex: 'role',
       key: 'role',
-      render: (r: string) => <Tag color={r === 'ADMIN' ? 'red' : 'default'} className="!rounded-full">{r}</Tag>,
+      render: (r: string) => (
+        <Tag color={r === 'ADMIN' ? 'red' : r === 'MODERATOR' ? 'orange' : 'default'} className="!rounded-full">
+          {r === 'ADMIN' ? 'Admin' : r === 'MODERATOR' ? 'Moderator' : 'Người dùng'}
+        </Tag>
+      ),
     },
     {
       title: 'Coins',
@@ -81,7 +85,7 @@ export default function AdminUsersPage() {
       render: (c: number) => <span className="text-secondary font-bold">{c}</span>,
     },
     {
-      title: 'Streak',
+      title: 'Chuỗi',
       dataIndex: 'streak',
       key: 'streak',
       render: (s: number) => <span className="text-slate-300">{s} ngày</span>,
@@ -91,8 +95,8 @@ export default function AdminUsersPage() {
       key: 'status',
       render: (_, record) =>
         record.isBanned
-          ? <Tag color="red" className="!rounded-full">Banned</Tag>
-          : <Tag color="green" className="!rounded-full">Active</Tag>,
+          ? <Tag color="red" className="!rounded-full">Bị cấm</Tag>
+          : <Tag color="green" className="!rounded-full">Hoạt động</Tag>,
     },
     {
       title: 'Hành động',
@@ -107,15 +111,15 @@ export default function AdminUsersPage() {
             Chi tiết
           </Button>
           {record.isBanned ? (
-            <Popconfirm title="Unban user này?" onConfirm={() => handleUnban(record.id)} okText="Unban" cancelText="Huỷ">
+            <Popconfirm title="Mở cấm người dùng này?" onConfirm={() => handleUnban(record.id)} okText="Mở cấm" cancelText="Huỷ">
               <Button size="small" type="primary" loading={actionId === record.id} className="!rounded-lg !text-xs !bg-green-500 !border-green-500">
-                <CheckCircleOutlined /> Unban
+                <CheckCircleOutlined /> Mở cấm
               </Button>
             </Popconfirm>
           ) : (
-            <Popconfirm title="Ban user này?" onConfirm={() => handleBan(record.id)} okText="Ban" cancelText="Huỷ">
+            <Popconfirm title="Cấm người dùng này?" onConfirm={() => handleBan(record.id)} okText="Cấm" cancelText="Huỷ">
               <Button size="small" danger loading={actionId === record.id} className="!rounded-lg !text-xs">
-                <StopOutlined /> Ban
+                <StopOutlined /> Cấm
               </Button>
             </Popconfirm>
           )}

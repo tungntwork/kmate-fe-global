@@ -21,36 +21,30 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  // TEMP: Disabled for testing - uncomment below to re-enable
-  return (
-    <SocketContext.Provider value={{ socket, isConnected }}>
-      {children}
-    </SocketContext.Provider>
-  );
-
-  /* RE-ENABLE THIS AFTER TESTING:
   useEffect(() => {
-    const socketUrl = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:4000';
-    
+    // Doc token truc tiep tu localStorage de tranh hydration mismatch
+    const token = localStorage.getItem('accessToken');
+    if (!token) return;
+
+    const socketUrl = (process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:4000').replace(/\/$/, '');
+
     const newSocket = io(`${socketUrl}/private`, {
-      auth: {
-        token: typeof window !== 'undefined' ? localStorage.getItem('accessToken') : '',
-      },
+      auth: { token },
       transports: ['websocket', 'polling'],
+      reconnectionAttempts: 3,
+      reconnectionDelay: 1000,
     });
 
     newSocket.on('connect', () => {
-      console.log('Socket connected');
       setIsConnected(true);
     });
 
     newSocket.on('disconnect', () => {
-      console.log('Socket disconnected');
       setIsConnected(false);
     });
 
-    newSocket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+    newSocket.on('connect_error', () => {
+      setIsConnected(false);
     });
 
     setSocket(newSocket);
@@ -65,5 +59,4 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       {children}
     </SocketContext.Provider>
   );
-  */
 }

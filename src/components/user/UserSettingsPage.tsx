@@ -43,11 +43,10 @@ export default function UserSettingsPage() {
   const [pwLoading, setPwLoading] = useState(false);
 
   useEffect(() => {
-    // TODO: re-enable auth guard before production
-    // if (!isAuthenticated) {
-    //   router.replace('/login');
-    //   return;
-    // }
+    if (!isAuthenticated) {
+      router.replace('/login');
+      return;
+    }
     authService.getSessions()
       .then((r) => setSessions(r.data.data.sessions))
       .catch(() => setSessions([]))
@@ -85,8 +84,11 @@ export default function UserSettingsPage() {
       setNewPw('');
       setTimeout(() => { logout(); router.push('/login'); }, 1500);
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } };
-      message.error(e.response?.data?.message || 'Lỗi khi đổi mật khẩu');
+      const e = err as Record<string, unknown>;
+      const resp = e?.response as Record<string, unknown> | undefined;
+      const data = resp?.data as Record<string, unknown> | undefined;
+      const error = data?.error as Record<string, unknown> | undefined;
+      message.error((error?.message as string) || 'Lỗi khi đổi mật khẩu');
     } finally {
       setPwLoading(false);
     }
@@ -171,7 +173,7 @@ export default function UserSettingsPage() {
   }
 
   return (
-    <div className="p-6 lg:p-10 space-y-6 bg-gradient-cyber min-h-full max-w-4xl">
+    <div className="p-6 lg:p-10 space-y-6 bg-gradient-cyber min-h-full">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-black text-white">Cài đặt tài khoản</h2>
       </div>

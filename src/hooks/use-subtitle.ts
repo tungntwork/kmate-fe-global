@@ -46,19 +46,20 @@ export function useSubtitleJobStatus(jobId: string | null, userId?: string) {
     queryKey: ['subtitle-job', jobId],
     queryFn: async () => {
       if (!jobId) return null;
-      const { data } = await api.get<SubtitleProcessingJob>(
-        `/subtitles/jobs/${jobId}`,
+      // Add timestamp to bypass React Query/browser HTTP caching (ETags/304)
+      // so FAILED status is always reflected immediately
+      const { data } = await api.get<{ data: SubtitleProcessingJob }>(
+        `/subtitles/jobs/${jobId}?_=${Date.now()}`,
       );
-      return data;
+      return data.data;
     },
     enabled: !!jobId,
+    staleTime: 0,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      // Stop polling once terminal state reached
-      if (status && ['COMPLETED', 'FAILED', 'DEAD_LETTER'].includes(status)) {
-        return false;
-      }
-      // Poll every 3s for active jobs
+      // Stop polling once COMPLETED (keep polling FAILED so UI always shows current state)
+      if (status === 'COMPLETED') return false;
+      // Poll every 3s
       return 3000;
     },
   });

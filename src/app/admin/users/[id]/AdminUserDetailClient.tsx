@@ -1,11 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Avatar, Tag, Button, Spin, message, Descriptions, Tabs, Card } from 'antd';
-import { ArrowLeftOutlined, StopOutlined, CheckCircleOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  Avatar, Tag, Button, Spin, message, Descriptions, Tabs, Card,
+  Modal, InputNumber, Form, Select, notification,
+} from 'antd';
+import {
+  ArrowLeftOutlined, StopOutlined, CheckCircleOutlined,
+  UserOutlined, DollarOutlined, CheckCircleFilled,
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { adminService, type AdminUserDetail } from '@/lib/api-services';
+import { adminService, coinService, type AdminUserDetail, type CoinPackage } from '@/lib/api-services';
 
 export default function AdminUserDetailPage() {
   const params = useParams();
@@ -13,13 +19,31 @@ export default function AdminUserDetailPage() {
   const [user, setUser] = useState<AdminUserDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [grantOpen, setGrantOpen] = useState(false);
+  const [grantLoading, setGrantLoading] = useState(false);
+  const [packages, setPackages] = useState<CoinPackage[]>([]);
+  const [form] = Form.useForm();
+  const [selectedMode, setSelectedMode] = useState<'preset' | 'custom'>('preset');
+  const notificationRef = useRef<ReturnType<typeof notification.open> | null>(null);
 
-  useEffect(() => {
+  const fetchUser = () => {
     const id = params.id as string;
     adminService.getUser(id)
       .then((r) => setUser(r.data.data))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchUser();
   }, [params.id]);
+
+  useEffect(() => {
+    if (grantOpen) {
+      coinService.getPackages()
+        .then((r) => setPackages(r.data.data.filter((p: CoinPackage) => p.isActive)))
+        .catch(() => {});
+    }
+  }, [grantOpen]);
 
   const handleBan = async () => {
     setActionLoading(true);
@@ -41,6 +65,56 @@ export default function AdminUserDetailPage() {
     finally { setActionLoading(false); }
   };
 
+  const handleGrantCoins = async (values: { preset?: number; amount?: number; reason?: string }) => {
+    const finalAmount = values.amount ?? values.preset;
+    if (!finalAmount || finalAmount <= 0) {
+      message.error('Vui lòng chọn hoặc nhập số xu');
+      return;
+    }
+    setGrantLoading(true);
+    try {
+      const result = await adminService.grantCoins(params.id as string, {
+        amount: finalAmount,
+        reason: values.reason,
+      });
+
+      setUser((u) => u ? { ...u, coinBalance: result.data.data.balance } : u);
+      setGrantOpen(false);
+      form.resetFields();
+
+      // Antd notification toast ben phai man hinh
+      notification.success({
+        message: 'Cấp xu thành công',
+        description: (
+          <span>
+            Đã cấp <strong>{finalAmount.toLocaleString()} xu</strong> cho{' '}
+            <strong>{user?.name || user?.email}</strong>.
+            {values.reason && <> Lý do: <em>{values.reason}</em>.</>}
+          </span>
+        ),
+        icon: <CheckCircleFilled className="text-green-400" />,
+        placement: 'topRight',
+        duration: 5,
+        style: {
+          backgroundColor: '#1a2a3a',
+          border: '1px solid #22c55e',
+          borderRadius: 12,
+        },
+        className: '!text-white',
+      });
+
+      message.success(`Đã cấp ${finalAmount.toLocaleString()} xu cho người dùng`);
+    } catch (err: unknown) {
+      const e = err as Record<string, unknown>;
+      const resp = e?.response as Record<string, unknown> | undefined;
+      const data = resp?.data as Record<string, unknown> | undefined;
+      const error = data?.error as Record<string, unknown> | undefined;
+      message.error((error?.message as string) || 'Lỗi khi cấp xu');
+    } finally {
+      setGrantLoading(false);
+    }
+  };
+
   if (loading) return (
     <div className="flex items-center justify-center h-screen bg-[#0B0B0F]">
       <Spin size="large" />
@@ -52,10 +126,7 @@ export default function AdminUserDetailPage() {
     <div className="min-h-screen bg-[#0B0B0F] p-6">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
-        <Button
-          onClick={() => router.back()}
-          className="!rounded-xl"
-        >
+        <Button onClick={() => router.back()} className="!rounded-xl">
           <ArrowLeftOutlined /> Quay lại
         </Button>
         <h1 className="text-2xl font-bold text-white">Chi tiết User</h1>
@@ -73,16 +144,26 @@ export default function AdminUserDetailPage() {
             <p className="text-slate-400">{user.role}</p>
             <p className="text-slate-500 text-sm">{user.email}</p>
             <div className="flex gap-6 mt-3">
-              <span className="text-sm text-slate-400">Coins: <span className="text-primary font-bold">{user.coinBalance}</span></span>
-              <span className="text-sm text-slate-400">Streak: <span className="text-primary font-bold">{user.streak} ngày</span></span>
-              <span className="text-sm text-slate-400">Flashcards: <span className="text-primary font-bold">{user._count.flashcards}</span></span>
-              <span className="text-sm text-slate-400">Quizzes: <span className="text-primary font-bold">{user._count.quizzes}</span></span>
+              <span className="text-sm text-slate-400">
+                Coins: <span className="text-primary font-bold">{user.coinBalance.toLocaleString()}</span>
+              </span>
+              <span className="text-sm text-slate-400">
+                Streak: <span className="text-primary font-bold">{user.streak} ngày</span>
+              </span>
+              <span className="text-sm text-slate-400">
+                Flashcards: <span className="text-primary font-bold">{user._count.flashcards}</span>
+              </span>
+              <span className="text-sm text-slate-400">
+                Quizzes: <span className="text-primary font-bold">{user._count.quizzes}</span>
+              </span>
             </div>
-            <p className="text-slate-500 text-sm mt-2">Tham gia {dayjs(user.createdAt).format('DD/MM/YYYY')}</p>
+            <p className="text-slate-500 text-sm mt-2">
+              Tham gia {dayjs(user.createdAt).format('DD/MM/YYYY')}
+            </p>
           </div>
         </div>
 
-        <div className="mt-6 flex gap-3">
+        <div className="mt-6 flex gap-3 flex-wrap">
           {user.isBanned ? (
             <Button
               type="primary"
@@ -93,15 +174,17 @@ export default function AdminUserDetailPage() {
               <CheckCircleOutlined /> Unban
             </Button>
           ) : (
-            <Button
-              danger
-              onClick={handleBan}
-              loading={actionLoading}
-              className="!rounded-xl"
-            >
+            <Button danger onClick={handleBan} loading={actionLoading} className="!rounded-xl">
               <StopOutlined /> Ban User
             </Button>
           )}
+          <Button
+            type="default"
+            onClick={() => setGrantOpen(true)}
+            className="!rounded-xl !border-primary !text-primary hover:!bg-primary/10"
+          >
+            <DollarOutlined /> Cấp xu
+          </Button>
         </div>
       </Card>
 
@@ -120,7 +203,9 @@ export default function AdminUserDetailPage() {
                   <Descriptions.Item label="Name">{user.name || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Role">{user.role}</Descriptions.Item>
                   <Descriptions.Item label="Created">{dayjs(user.createdAt).format('DD/MM/YYYY HH:mm')}</Descriptions.Item>
-                  <Descriptions.Item label="Last Active">{user.lastActiveAt ? dayjs(user.lastActiveAt).format('DD/MM/YYYY HH:mm') : '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Last Active">
+                    {user.lastActiveAt ? dayjs(user.lastActiveAt).format('DD/MM/YYYY HH:mm') : '—'}
+                  </Descriptions.Item>
                 </Descriptions>
               ),
             },
@@ -146,6 +231,125 @@ export default function AdminUserDetailPage() {
           ]}
         />
       </Card>
+
+      {/* Grant Coins Modal */}
+      <Modal
+        title={
+          <span className="text-white">
+            <DollarOutlined className="mr-2 text-primary" />
+            Cấp xu cho người dùng
+          </span>
+        }
+        open={grantOpen}
+        onCancel={() => { setGrantOpen(false); form.resetFields(); }}
+        footer={null}
+        className="[&_.ant-modal-content]:!bg-[#151c2a] [&_.ant-modal-header]:!bg-[#151c2a]"
+        destroyOnClose
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleGrantCoins}
+          className="mt-4"
+        >
+          {/* Preset package options */}
+          {packages.length > 0 ? (
+            <>
+              <Form.Item name="preset" label={<span className="text-slate-400">Số xu</span>}>
+                <Select
+                  placeholder="-- Chọn gói xu --"
+                  className="!w-full"
+                  options={packages.map((pkg) => ({
+                    label: (
+                      <span className="flex justify-between w-full">
+                        <span className="text-white font-medium">{pkg.name}</span>
+                        <span className="text-primary font-bold">{pkg.coinAmount.toLocaleString()} xu</span>
+                      </span>
+                    ),
+                    value: pkg.coinAmount,
+                  }))}
+                />
+              </Form.Item>
+
+              <div className="flex gap-3 mb-4">
+                <Button
+                  type={selectedMode === 'preset' ? 'primary' : 'default'}
+                  onClick={() => { setSelectedMode('preset'); form.setFieldsValue({ amount: undefined }); }}
+                  className={selectedMode !== 'preset' ? '!border-primary !text-primary' : '!bg-primary !border-primary'}
+                >
+                  Chọn gói
+                </Button>
+                <Button
+                  type={selectedMode === 'custom' ? 'primary' : 'default'}
+                  onClick={() => { setSelectedMode('custom'); form.setFieldsValue({ preset: undefined }); }}
+                  className={selectedMode !== 'custom' ? '!border-primary !text-primary' : '!bg-primary !border-primary'}
+                >
+                  Nhập số khác
+                </Button>
+              </div>
+
+              {selectedMode === 'custom' && (
+                <Form.Item
+                  name="amount"
+                  label={<span className="text-slate-400">Số xu tùy chỉnh</span>}
+                >
+                  <InputNumber
+                    placeholder="Nhập số xu muốn cấp"
+                    min={1}
+                    className="!w-full !bg-white/5 !border-white/10 !text-white"
+                    formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                    parser={(value) => Number(String(value).replace(/,/g, '')) as unknown as undefined}
+                  />
+                </Form.Item>
+              )}
+            </>
+          ) : (
+            <Form.Item
+              name="amount"
+              label={<span className="text-slate-400">Số xu</span>}
+              rules={[{ required: true, message: 'Nhập số xu cần cấp' }]}
+            >
+              <InputNumber
+                placeholder="Nhập số xu muốn cấp"
+                min={1}
+                className="!w-full !bg-white/5 !border-white/10 !text-white"
+                formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                parser={(value) => Number(String(value).replace(/,/g, '')) as unknown as undefined}
+              />
+            </Form.Item>
+          )}
+
+          {/* Reason */}
+          <Form.Item name="reason" label={<span className="text-slate-400">Lý do (tùy chọn)</span>}>
+            <Select
+              placeholder="Chọn lý do"
+              allowClear
+              className="!w-full"
+              options={[
+                { label: 'Thưởng tháng', value: 'Thưởng tháng' },
+                { label: 'Thưởng tuần', value: 'Thưởng tuần' },
+                { label: 'Bồi thường', value: 'Bồi thường' },
+                { label: 'Quà tặng', value: 'Quà tặng' },
+                { label: 'Khác', value: 'Lý do khác' },
+              ]}
+            />
+          </Form.Item>
+
+          <div className="flex gap-3 justify-end mt-6">
+            <Button onClick={() => { setGrantOpen(false); form.resetFields(); }}>
+              Hủy
+            </Button>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={grantLoading}
+              className="!rounded-xl !bg-primary !border-primary"
+            >
+              <DollarOutlined /> Xác nhận cấp xu
+            </Button>
+          </div>
+        </Form>
+      </Modal>
     </div>
   );
 }

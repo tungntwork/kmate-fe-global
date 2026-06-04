@@ -24,9 +24,6 @@ const nextConfig = {
   },
   experimental: {
     optimizePackageImports: ['@ant-design/icons'],
-    turbo: {
-      resolveExtensions: ['.tsx', '.ts', '.jsx', '.js'],
-    },
   },
 };
 

@@ -29,13 +29,17 @@ export function LoginPage() {
     setLoading(true);
     try {
       const response = await authService.login({ email, password });
-      const { accessToken, refreshToken } = response.data.data;
+      const { accessToken, refreshToken, user } = response.data.data;
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', refreshToken);
       const { setTokens, setUser } = useAuthStore.getState();
       setTokens(accessToken, refreshToken);
+      setUser(user);
       message.success('Đăng nhập thành công! Đang chuyển hướng...');
-      setTimeout(() => { window.location.href = '/user/dashboard'; }, 500);
+      const dashboardPath = (user.role === 'ADMIN' || user.role === 'MODERATOR')
+        ? '/admin/dashboard'
+        : '/user/dashboard';
+      setTimeout(() => { window.location.href = dashboardPath; }, 500);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: { message?: string } } } };
       setError(error.response?.data?.error?.message || 'Email hoặc mật khẩu không đúng.');
