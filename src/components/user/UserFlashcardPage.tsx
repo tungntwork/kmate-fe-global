@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Button, Spin } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -177,12 +178,12 @@ function ReviewMode({ cards, deckName, streak, onBack }: { cards: Flashcard[]; d
   const currentCard = cards[currentIndex];
   const progressPercent = totalCards > 0 ? Math.round(((currentIndex + (completed ? 1 : 0)) / totalCards) * 100) : 0;
 
-  const handleRating = useCallback(async (rating: Rating) => {
+  const handleRating = async (rating: Rating) => {
     const quality = RATING_CONFIG[rating].quality;
     try {
       await flashcardService.review({ flashcardId: currentCard.id, quality });
     } catch {
-      // Continue even if API call fails — UI still progresses
+      // Continue even if API call fails
     }
     setMascotMsg(rating === 'again' ? 'Đừng nản! Thử lại nhé!' : 'Tuyệt vời! Học tiếp nào!');
     setIsRevealed(false);
@@ -193,7 +194,7 @@ function ReviewMode({ cards, deckName, streak, onBack }: { cards: Flashcard[]; d
     } else {
       setCompleted(true);
     }
-  }, [currentCard.id, currentIndex, totalCards]);
+  };
 
   if (completed) {
     return (
@@ -276,8 +277,76 @@ function ReviewMode({ cards, deckName, streak, onBack }: { cards: Flashcard[]; d
   );
 }
 
-function DeckListView({ decks, stats, loading, onSelectDeck }: {
-  decks: FlashcardDeck[];
+// ── New: Video deck card with YouTube thumbnail ──────────────────────────────
+function VideoDeckCard({ deck, onStart }: {
+  deck: FlashcardDeck & { youtubeId?: string; videoTitle?: string };
+  onStart: () => void;
+}) {
+  const color = deck.color || '#8B5CFA';
+  return (
+    <div
+      className="user-glass-card p-4 flex gap-4 cursor-pointer hover:border-primary-500/40 transition-all"
+      onClick={onStart}
+    >
+      {/* YouTube thumbnail */}
+      <div className="w-28 h-20 rounded-lg overflow-hidden bg-dark-400 flex-shrink-0">
+        {deck.youtubeId ? (
+          <img
+            src={`https://img.youtube.com/vi/${deck.youtubeId}/mqdefault.jpg`}
+            alt={deck.videoTitle || deck.name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0 flex flex-col justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+              style={{ color, backgroundColor: color + '15' }}>
+              {deck.name}
+            </span>
+          </div>
+          {deck.videoTitle && (
+            <p className="text-sm text-white truncate">{deck.videoTitle}</p>
+          )}
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-400">{deck.cardCount} thẻ</span>
+          {deck.youtubeId ? (
+            <Link
+              href={`/learn/${deck.youtubeId}`}
+              onClick={(e) => e.stopPropagation()}
+              className="text-xs font-bold px-3 py-1 rounded-xl transition-colors"
+              style={{ backgroundColor: color + '20', color }}>
+              Học lại
+            </Link>
+          ) : (
+            <button className="text-xs font-bold px-3 py-1 rounded-xl"
+              style={{ backgroundColor: color + '20', color }}>
+              Bắt đầu ôn
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck }: {
+  defaultDecks: FlashcardDeck[];
+  videoDecks: (FlashcardDeck & { youtubeId?: string; videoTitle?: string })[];
   stats: FlashcardStats | null;
   loading: boolean;
   onSelectDeck: (deck: FlashcardDeck) => void;
@@ -290,8 +359,13 @@ function DeckListView({ decks, stats, loading, onSelectDeck }: {
     );
   }
 
+  const totalCards = (stats?.totalCards ?? 0);
+  const dueToday = (stats?.dueToday ?? 0);
+  const streak = (stats?.streak ?? 0);
+
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-10 animate-fade-in">
+      {/* Page header */}
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl lg:text-4xl font-extrabold text-white">
           Flashcard{' '}
@@ -305,27 +379,55 @@ function DeckListView({ decks, stats, loading, onSelectDeck }: {
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-4">
         <div className="user-glass-card p-4 flex flex-col items-center gap-1">
-          <span className="text-2xl font-extrabold text-white">{stats?.totalCards ?? 0}</span>
+          <span className="text-2xl font-extrabold text-white">{totalCards}</span>
           <span className="text-xs text-slate-400">Tổng thẻ</span>
         </div>
         <div className="user-glass-card p-4 flex flex-col items-center gap-1">
-          <span className="text-2xl font-extrabold text-orange-400">{stats?.dueToday ?? 0}</span>
+          <span className="text-2xl font-extrabold text-orange-400">{dueToday}</span>
           <span className="text-xs text-slate-400">Cần ôn hôm nay</span>
         </div>
         <div className="user-glass-card p-4 flex flex-col items-center gap-1">
-          <span className="text-2xl font-extrabold text-cyan-400">{stats?.streak ?? 0}</span>
-          <span className="text-xs text-slate-400">Ngày liên tiếp 🔥</span>
+          <span className="text-2xl font-extrabold text-cyan-400">{streak}</span>
+          <span className="text-xs text-slate-400">Ngày liên tiếp</span>
         </div>
       </div>
 
-      {/* Deck grid */}
-      {decks.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {decks.map((deck, i) => (
-            <DeckCard key={deck.id} deck={{ ...deck, color: deck.color || DECK_COLORS[i % DECK_COLORS.length] }} onStart={() => onSelectDeck(deck)} />
-          ))}
+      {/* Default decks */}
+      {defaultDecks.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-white">Bộ từ cơ bản</h2>
+            <div className="h-px flex-1 bg-dark-200" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {defaultDecks.map((deck, i) => {
+              const color = deck.color || DECK_COLORS[i % DECK_COLORS.length];
+              return (
+                <DeckCard key={deck.id} deck={{ ...deck, color }} onStart={() => onSelectDeck(deck)} />
+              );
+            })}
+          </div>
         </div>
-      ) : (
+      )}
+
+      {/* Video decks */}
+      {videoDecks.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-white">Từ video của tôi</h2>
+            <span className="text-xs text-slate-500">{videoDecks.length} bộ</span>
+            <div className="h-px flex-1 bg-dark-200" />
+          </div>
+          <div className="space-y-3">
+            {videoDecks.map((deck) => (
+              <VideoDeckCard key={deck.id} deck={deck} onStart={() => onSelectDeck(deck)} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {defaultDecks.length === 0 && videoDecks.length === 0 && (
         <div className="user-glass-card p-8 text-center">
           <p className="text-slate-400 mb-4">Bạn chưa có bộ thẻ nào. Hãy tạo bộ thẻ đầu tiên!</p>
           <Button type="primary" className="!font-bold !rounded-xl"
@@ -362,6 +464,12 @@ export default function UserFlashcardPage() {
     }).finally(() => setLoading(false));
   }, []);
 
+  // Split decks into default (pre-seeded) and video-linked
+  const defaultDecks = decks.filter((d) => (d as any).isDefault === true);
+  const videoDecks = decks
+    .filter((d) => (d as any).isDefault !== true)
+    .map((d) => d as FlashcardDeck & { youtubeId?: string; videoTitle?: string });
+
   const handleSelectDeck = (deck: FlashcardDeck) => {
     setActiveDeckName(deck.name);
     if (deck.dueCount > 0) {
@@ -383,7 +491,13 @@ export default function UserFlashcardPage() {
           onBack={() => setActiveCards(null)}
         />
       ) : (
-        <DeckListView decks={decks} stats={stats} loading={loading} onSelectDeck={handleSelectDeck} />
+        <DeckListView
+          defaultDecks={defaultDecks}
+          videoDecks={videoDecks}
+          stats={stats}
+          loading={loading}
+          onSelectDeck={handleSelectDeck}
+        />
       )}
     </div>
   );

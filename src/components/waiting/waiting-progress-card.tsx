@@ -37,12 +37,18 @@ interface WaitingProgressCardProps {
   videoThumbnail?: string | null;
   videoTitle?: string | null;
   compact?: boolean;
+  vocabCompleted?: boolean;
+  vocabProgress?: number;
+  subtitleCompleted?: boolean;
 }
 
 export function WaitingProgressCard({
   videoThumbnail,
   videoTitle,
   compact = false,
+  vocabCompleted,
+  vocabProgress = 0,
+  subtitleCompleted = false,
 }: WaitingProgressCardProps) {
   const { stage, progress, estimatedSeconds, queuePosition, isCompleted, isFailed, errorMessage } =
     useWaitingStore();
@@ -227,8 +233,26 @@ export function WaitingProgressCard({
           {isCompleted && (
             <div className="text-center">
               <Text className="text-green-400 text-sm font-medium">
-                Subtitles are ready!
+                {vocabCompleted ? 'All done!' : 'Subtitles ready — vocabulary loading...'}
               </Text>
+            </div>
+          )}
+
+          {/* Vocabulary progress bar — shown when subtitles done but vocab still running */}
+          {isCompleted && !vocabCompleted && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-1">
+                <Text className="text-gray-500 text-xs">Trích xuất từ vựng</Text>
+                <Text className="text-gray-500 text-xs">{Math.round(vocabProgress)}%</Text>
+              </div>
+              <div className="h-1.5 bg-dark-200 rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-primary-500"
+                  initial={{ width: '0%' }}
+                  animate={{ width: `${vocabProgress}%` }}
+                  transition={{ duration: 0.4 }}
+                />
+              </div>
             </div>
           )}
         </Space>

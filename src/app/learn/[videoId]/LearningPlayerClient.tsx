@@ -19,7 +19,11 @@ import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useVocabulary } from '@/hooks/use-vocabulary';
 import { useSubtitleSocket } from '@/hooks/use-subtitle-socket';
 import { SubtitleGenerationModal } from '@/components/subtitle/subtitle-generation-modal';
-import { videoService, subtitleService, flashcardService, type VideoDetailResult } from '@/lib/api-services';
+import { VocabularyPanel } from '@/components/vocabulary/vocabulary-panel';
+import { FlashcardCreateModal } from '@/components/vocabulary/flashcard-create-modal';
+import { videoService, subtitleService, flashcardService } from '@/lib/api-services';
+import { api } from '@/lib/api';
+import type { VideoDetailResult } from '@/lib/api-services';
 import {
   VideoPlayer,
   SubtitleOverlay,
@@ -28,6 +32,21 @@ import {
 } from '@/components/player';
 
 const { Title, Text } = Typography;
+
+// ── Robust segment field mapper ────────────────────────────────────────────────
+// Handles every possible field name variant the backend might send for both
+// original text and translation, so translations never silently disappear.
+function mapSegment(seg: any) {
+  const ko = seg.korean ?? seg.text ?? seg.original ?? '';
+  const vi = seg.vietnamese ?? seg.translation ?? seg.translatedText ?? '';
+  return {
+    id: seg.id || String(seg.start ?? seg.startTime ?? 0),
+    startTime: seg.start ?? seg.startTime ?? 0,
+    endTime: seg.end ?? seg.endTime ?? 0,
+    text: ko,
+    translation: vi,
+  };
+}
 
 export default function LearningPlayerPage() {
   const params = useParams();
@@ -47,8 +66,30 @@ export default function LearningPlayerPage() {
   const [selectedWord, setSelectedWord] = useState<{
     word: string;
     position: { x: number; y: number };
+    meaning?: string;
+    romanization?: string;
+    partOfSpeech?: string;
+    example?: string;
+    exampleTranslation?: string;
+    isLoading?: boolean;
   } | null>(null);
   const [savingWord, setSavingWord] = useState(false);
+  const [flashcardDecks, setFlashcardDecks] = useState<any[]>([]);
+  const [addingToFlashcard, setAddingToFlashcard] = useState<string | null>(null); // vocab item id being added
+
+  // AI vocabulary panel state
+  const [vocabWords, setVocabWords] = useState<any[]>([]);
+  const [vocabExtracting, setVocabExtracting] = useState(false);
+  const [vocabExtractionProgress, setVocabExtractionProgress] = useState(0);
+  const [vocabJobId, setVocabJobId] = useState<string | null>(null);
+  const [flashcardModalOpen, setFlashcardModalOpen] = useState(false);
+  const [selectedVocabIds, setSelectedVocabIds] = useState<string[]>([]);
+
+  // Current subtitle segment words — shown in vocabulary panel
+  const [currentSegmentWords, setCurrentSegmentWords] = useState<any[]>([]);
+  const lastSegmentWordsKeyRef = useRef<string>('');
+  // Stable ref to current segment — updated via store subscription, avoids useCallback dependency churn
+  const currentSegmentRef = useRef<typeof currentSegment>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -60,6 +101,7 @@ export default function LearningPlayerPage() {
     isPlaying,
     currentTime,
     reset: resetPlayer,
+    togglePlay,
   } = usePlayerStore();
 
   const {
@@ -67,7 +109,13 @@ export default function LearningPlayerPage() {
     setSegments,
     currentSegment,
     clearSegments,
+    setIsLoading: setSubtitleLoading,
   } = useSubtitleStore();
+
+  // Keep currentSegmentRef in sync with the store without triggering re-renders
+  useEffect(() => {
+    currentSegmentRef.current = currentSegment;
+  }, [currentSegment]);
 
   const { loadProgress } = useWatchHistoryStore();
 
@@ -91,15 +139,22 @@ export default function LearningPlayerPage() {
           if (r.data.data.subtitles.length > 0) {
             const subData = r.data.data.subtitles[0];
             if (subData.bilingualContent && Array.isArray(subData.bilingualContent)) {
-              setSegments(subData.bilingualContent as any[], videoId, subData.language);
+              setSegments(subData.bilingualContent.map(mapSegment), videoId, subData.language);
+              setSubtitleLoading(false);
             } else if (subData.subtitleContent && Array.isArray(subData.subtitleContent)) {
-              setSegments(subData.subtitleContent as any[], videoId, subData.language);
+              setSegments(subData.subtitleContent.map(mapSegment), videoId, subData.language);
+              setSubtitleLoading(false);
             }
             setShowSubtitleModal(false);
             message.success('Phụ đề đã sẵn sàng!');
+          } else {
+            setSubtitleLoading(false);
+            setShowSubtitleModal(true);
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          setSubtitleLoading(false);
+        });
     }
   }, [subtitleSocket.ready, videoId]);
 
@@ -136,14 +191,15 @@ export default function LearningPlayerPage() {
           const subRes = await subtitleService.getSubtitles(videoId);
           if (subRes.data.data.subtitles.length > 0) {
             const subData = subRes.data.data.subtitles[0];
-            // bilingualContent is KO+VI segments array from Prisma
             if (subData.bilingualContent && Array.isArray(subData.bilingualContent)) {
-              setSegments(subData.bilingualContent as any[], videoId, subData.language);
+              setSegments(subData.bilingualContent.map(mapSegment), videoId, subData.language);
+              setSubtitleLoading(false);
             } else if (subData.subtitleContent && Array.isArray(subData.subtitleContent)) {
-              setSegments(subData.subtitleContent as any[], videoId, subData.language);
+              setSegments(subData.subtitleContent.map(mapSegment), videoId, subData.language);
+              setSubtitleLoading(false);
             }
           } else {
-            // No subtitles — prompt user to generate
+            setSubtitleLoading(false);
             setShowSubtitleModal(true);
           }
         } catch (subErr: any) {
@@ -191,9 +247,9 @@ export default function LearningPlayerPage() {
         if (r.data.data.subtitles.length > 0) {
           const subData = r.data.data.subtitles[0];
           if (subData.bilingualContent && Array.isArray(subData.bilingualContent)) {
-            setSegments(subData.bilingualContent as any[], videoId, subData.language);
+            setSegments(subData.bilingualContent.map(mapSegment), videoId, subData.language);
           } else if (subData.subtitleContent && Array.isArray(subData.subtitleContent)) {
-            setSegments(subData.subtitleContent as any[], videoId, subData.language);
+            setSegments(subData.subtitleContent.map(mapSegment), videoId, subData.language);
           }
         }
       })
@@ -209,21 +265,15 @@ export default function LearningPlayerPage() {
     router.push('/user/explore');
   }, [router]);
 
-  // ── Save word to backend flashcard ────────────────────────────────
+  // ── Save word to vocabulary sidebar ───────────────────────────────
   const handleSaveWord = useCallback(async () => {
     if (!selectedWord || !currentSegment) return;
     setSavingWord(true);
     try {
-      await flashcardService.createFlashcard({
-        deckId: 'default',
-        front: selectedWord.word,
-        back: currentSegment.translation || '',
-        example: currentSegment.text || '',
-      });
-      // Also save locally for display
       await saveWord({
         word: selectedWord.word,
-        meaning: currentSegment.translation || '',
+        meaning: selectedWord.meaning || currentSegment.translation || currentSegment.text || selectedWord.word,
+        reading: selectedWord.romanization,
         segmentId: currentSegment.id || `seg-${selectedWord.word}`,
         context: currentSegment.text || '',
         contextTranslation: currentSegment.translation || '',
@@ -231,18 +281,235 @@ export default function LearningPlayerPage() {
       message.success('Đã lưu từ vựng!');
       setSelectedWord(null);
     } catch (err: any) {
-      const msg = err?.response?.data?.message ?? 'Loi khi luu tu vung';
+      const msg = err?.response?.data?.message ?? err?.message ?? 'Loi khi luu tu vung';
       message.error(msg);
     } finally {
       setSavingWord(false);
     }
   }, [selectedWord, currentSegment, saveWord]);
 
-  const handleWordClick = useCallback((word: string, position: { x: number; y: number }) => {
-    setSelectedWord({ word, position });
+  // Load decks when drawer opens
+  const handleOpenVocabDrawer = useCallback(async () => {
+    setVocabDrawerOpen(true);
+    try {
+      const res = await flashcardService.getDecks();
+      setFlashcardDecks(res.data.data);
+    } catch {
+      setFlashcardDecks([]);
+    }
   }, []);
 
-  const handleCloseWordPopup = useCallback(() => setSelectedWord(null), []);
+  // Add a vocabulary item to a flashcard deck
+  const handleAddToFlashcard = useCallback(async (vocabItem: any, deckId: string) => {
+    setAddingToFlashcard(vocabItem.id);
+    try {
+      await flashcardService.createFlashcard({
+        word: vocabItem.word,
+        meaning: vocabItem.meaning,
+        pronunciation: vocabItem.reading,
+        exampleSentence: vocabItem.context,
+        exampleTranslation: vocabItem.contextTranslation,
+        deckId,
+        videoId: videoId,
+      });
+      message.success('Đã thêm vào bộ flashcard!');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? err?.response?.data?.error?.message ?? 'Loi khi tao flashcard';
+      message.error(msg);
+    } finally {
+      setAddingToFlashcard(null);
+    }
+  }, [videoId]);
+
+  const handleWordClick = useCallback(async (word: string, position: { x: number; y: number }) => {
+    const { pauseByHover } = usePlayerStore.getState();
+    pauseByHover(); // keep video paused while reading popup
+
+    setSelectedWord({ word, position, isLoading: true });
+
+    try {
+      const res = await api.post<{ data: { meaning: string; romanization: string; partOfSpeech: string; example: string; exampleTranslation: string } }>('/vocabulary/lookup', {
+        word,
+        context: currentSegmentRef.current?.text ?? undefined,
+      });
+      const def = res.data.data;
+      setSelectedWord({
+        word,
+        position,
+        meaning: def.meaning,
+        romanization: def.romanization,
+        partOfSpeech: def.partOfSpeech,
+        example: def.example,
+        exampleTranslation: def.exampleTranslation,
+        isLoading: false,
+      });
+    } catch {
+      setSelectedWord({ word, position, meaning: undefined, isLoading: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // no deps — currentSegmentRef is always stable
+
+  const handleCloseWordPopup = useCallback(() => {
+    const { resumeFromHover } = usePlayerStore.getState();
+    // Only auto-resume if the video was paused by hover
+    resumeFromHover();
+    setSelectedWord(null);
+  }, []);
+
+  // ── Vocabulary panel handlers ────────────────────────────────────
+
+  // Load vocabulary from API when video loads
+  const loadVocabWords = useCallback(async () => {
+    try {
+      const res = await api.get<{ data: { items: any[]; total: number } }>(`/vocabulary/${videoId}`);
+      const items = res.data.data?.items ?? [];
+      setVocabWords(items);
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        setVocabWords([]);
+      } else {
+        setVocabWords([]);
+        message.warn('Không thể tải từ vựng. Bạn có thể bấm "Trích xuất" để tạo.');
+      }
+    }
+  }, [videoId]);
+
+  // Trigger AI vocabulary extraction
+  const handleExtractVocabulary = useCallback(async (mode: 'topic' | 'segment' | 'all') => {
+    setVocabExtracting(true);
+    setVocabExtractionProgress(0);
+    try {
+      const res = await api.post<{ data: { jobId: string } }>('/vocabulary/extract', {
+        videoId,
+        mode,
+      });
+      setVocabJobId(res.data.data.jobId);
+      message.info('Đang trích xuất từ vựng...');
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        const existingJobId =
+          err?.response?.data?.error?.jobId ?? err?.response?.data?.jobId;
+        if (existingJobId) {
+          setVocabJobId(existingJobId);
+          message.info('Đang đợi trích xuất từ vựng trước đó...');
+          return;
+        }
+      }
+      const msg = err?.response?.data?.error?.message ?? err?.message ?? 'Lỗi khi trích xuất';
+      message.error(msg);
+      setVocabExtracting(false);
+    }
+  }, [videoId]);
+
+  // Poll vocab job status
+  useEffect(() => {
+    if (!vocabJobId) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get<{ data: { status: string; progress: number } }>(`/vocabulary/jobs/${vocabJobId}`);
+        const { status, progress } = res.data.data;
+        setVocabExtractionProgress(progress ?? 0);
+        if (status === 'COMPLETED') {
+          setVocabExtracting(false);
+          setVocabJobId(null);
+          loadVocabWords();
+          message.success('Đã trích xuất từ vựng!');
+          clearInterval(interval);
+        } else if (status === 'FAILED') {
+          setVocabExtracting(false);
+          setVocabJobId(null);
+          message.error('Trích xuất từ vựng thất bại');
+          clearInterval(interval);
+        }
+      } catch {
+        // ignore
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vocabJobId]);
+
+  // Listen for vocabulary:ready socket event
+  useEffect(() => {
+    if (!subtitleSocket) return;
+    const handler = () => {
+      loadVocabWords();
+    };
+    const socket = (window as any).__socket;
+    if (!socket) return;
+    socket.on('vocabulary:ready', handler);
+    return () => { socket.off('vocabulary:ready', handler); };
+  }, [subtitleSocket, loadVocabWords]);
+
+  // Create flashcards from selected vocabulary
+  const handleCreateFlashcards = useCallback((words: any[]) => {
+    setSelectedVocabIds(words.map((w: any) => w.id));
+    setFlashcardModalOpen(true);
+  }, []);
+
+  const handleWordDelete = useCallback((id: string) => {
+    setVocabWords((prev) => prev.filter((w: any) => w.id !== id));
+  }, []);
+
+  const handleWordReorder = useCallback((words: any[]) => {
+    setVocabWords(words);
+  }, []);
+
+  // Load vocab when subtitle is ready
+  useEffect(() => {
+    if (subtitleGenerated || (segments.length > 0)) {
+      loadVocabWords();
+    }
+  }, [subtitleGenerated, segments.length, loadVocabWords]);
+
+  // ── Build currentSegmentWords from the active subtitle segment (updated on every currentTime change) ──
+  // Uses the same binary-search algorithm as useSubtitleSync so vocabulary extraction
+  // always targets the SAME segment the subtitle overlay is showing.
+  useEffect(() => {
+    if (!segments.length) {
+      setCurrentSegmentWords([]);
+      return;
+    }
+
+    // Binary search: find the rightmost segment where startTime <= currentTime.
+    // This matches the logic in useSubtitleSync's binarySearchSegment.
+    let lo = 0, hi = segments.length - 1;
+    let result: (typeof segments)[0] | null = null;
+    while (lo <= hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      const s = segments[mid];
+      if (currentTime >= s.startTime) {
+        result = s;   // candidate — keep searching right for a later one
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+
+    if (!result || !result.text) {
+      setCurrentSegmentWords([]);
+      lastSegmentWordsKeyRef.current = '';
+      return;
+    }
+    // Extract individual Korean words from the segment text
+    const words = result.text.split(/\s+/).filter((w: string) => /[\uAC00-\uD7AF]/.test(w));
+    const wordsKey = words.slice(0, 5).join('|');
+
+    // Skip state update if the word list hasn't changed, preventing unnecessary re-renders
+    if (wordsKey === lastSegmentWordsKeyRef.current) return;
+    lastSegmentWordsKeyRef.current = wordsKey;
+
+    const mapped = words.slice(0, 5).map((w: string, i: number) => ({
+      id: `seg-${result!.id}-${i}`,
+      word: w,
+      meaning: result!.translation || '',
+      romanization: '',
+      difficulty: 'medium',
+      example: result!.text,
+      exampleTranslation: result!.translation || '',
+    }));
+    setCurrentSegmentWords(mapped);
+  }, [segments, currentTime]);
 
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
@@ -256,6 +523,22 @@ export default function LearningPlayerPage() {
     { key: 'C', action: 'Subtitles' },
     { key: ', .', action: 'Speed' },
   ];
+
+  // ── Video click → toggle play/pause ────────────────────────────────
+
+  // ── Saved vocabulary items from store (localStorage) ──────────────
+  // These come from the "Lưu vào Flashcard" button on subtitle word clicks
+  const savedVocabItems = vocabItems
+    .filter((item) => item.videoId === videoId)
+    .map((item) => ({
+      id: item.id,
+      word: item.word,
+      meaning: item.meaning || item.contextTranslation || '',
+      romanization: item.reading || '',
+      difficulty: 'medium',
+      example: item.context || '',
+      exampleTranslation: item.contextTranslation || '',
+    }));
 
   return (
     <div className="flex flex-col h-screen bg-[#0B0B0F] text-white overflow-hidden">
@@ -314,7 +597,7 @@ export default function LearningPlayerPage() {
               <Button
                 type="text"
                 icon={<SaveOutlined />}
-                onClick={() => setVocabDrawerOpen(true)}
+                onClick={handleOpenVocabDrawer}
                 className="text-gray-400 hover:!text-primary"
               />
             </Tooltip>
@@ -338,28 +621,60 @@ export default function LearningPlayerPage() {
       <div className="flex flex-1 overflow-hidden" ref={containerRef}>
         {/* Video player column */}
         <div className="flex-1 flex flex-col relative">
-          {/* Player container */}
-          <div className="relative flex-1 bg-black">
-            <VideoPlayer />
-            <SubtitleOverlay />
+          {/* Player container — click anywhere to toggle play/pause */}
+          <div className="relative flex-1 bg-black" onClick={() => togglePlay()}>
+            <VideoPlayer youtubeId={video?.youtubeId} poster={video?.thumbnail} />
+            <SubtitleOverlay onWordClick={handleWordClick} />
             <PlayerControls />
           </div>
 
-          {/* Word popup */}
+          {/* Word popup — z-55 to sit above PlayerControls (z-50) */}
           {selectedWord && (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="absolute z-30 bg-[#1e293b] border border-primary/30 rounded-2xl p-4 w-64 shadow-xl"
+              className="absolute z-[55] bg-[#1e293b] border border-primary/30 rounded-2xl p-4 w-72 shadow-xl"
               style={{ left: selectedWord.position.x, top: selectedWord.position.y }}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-lg font-black text-primary">{selectedWord.word}</span>
+                <span
+                  className="text-lg font-black text-primary"
+                  style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
+                >
+                  {selectedWord.word}
+                </span>
                 <button onClick={handleCloseWordPopup} className="text-slate-400 hover:text-white">×</button>
               </div>
-              {currentSegment && (
-                <p className="text-sm text-slate-300 mb-3">{currentSegment.translation}</p>
+
+              {selectedWord.isLoading ? (
+                <div className="flex items-center justify-center py-3">
+                  <Spin size="small" />
+                </div>
+              ) : selectedWord.meaning ? (
+                <div className="space-y-2 mb-3">
+                  {selectedWord.romanization && (
+                    <p className="text-gray-400 text-xs italic">{selectedWord.romanization}</p>
+                  )}
+                  <p className="text-yellow-300 font-medium text-sm">{selectedWord.meaning}</p>
+                  {selectedWord.partOfSpeech && (
+                    <p className="text-gray-500 text-xs capitalize">{selectedWord.partOfSpeech}</p>
+                  )}
+                  {selectedWord.example && (
+                    <div className="pt-1 border-t border-white/10">
+                      <p className="text-white text-xs" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                        &ldquo;{selectedWord.example}&rdquo;
+                      </p>
+                      {selectedWord.exampleTranslation && (
+                        <p className="text-gray-500 text-xs">{selectedWord.exampleTranslation}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                currentSegment && (
+                  <p className="text-sm text-slate-300 mb-3">{currentSegment.translation}</p>
+                )
               )}
               <Button
                 size="small"
@@ -388,11 +703,11 @@ export default function LearningPlayerPage() {
           )}
         </div>
 
-        {/* Sidebar */}
-        <aside className="w-80 flex-shrink-0 bg-[#111827] border-l border-white/5 overflow-y-auto hidden md:flex flex-col">
+        {/* Sidebar — AI Vocabulary Panel */}
+        <aside className="w-80 flex-shrink-0 hidden md:flex flex-col">
           {/* Current segment info */}
           {currentSegment && (
-            <div className="p-4 border-b border-white/5">
+            <div className="p-4 border-b border-dark-200 bg-dark-300">
               <p className="text-[10px] font-bold uppercase tracking-wider text-primary mb-2">Đoạn hiện tại</p>
               <p className="text-white text-sm font-medium mb-1">{currentSegment.text}</p>
               <p className="text-slate-400 text-xs">{currentSegment.translation}</p>
@@ -401,7 +716,7 @@ export default function LearningPlayerPage() {
 
           {/* Chapters */}
           {video?.chapters && video.chapters.length > 0 && (
-            <div className="p-4 border-b border-white/5">
+            <div className="p-4 border-b border-dark-200 bg-dark-300">
               <p className="text-[10px] font-bold uppercase tracking-wider text-primary mb-3">Chương</p>
               {video.chapters.map((chapter, index) => (
                 <button
@@ -418,30 +733,27 @@ export default function LearningPlayerPage() {
             </div>
           )}
 
-          {/* Vocabulary from this video */}
-          <div className="p-4 flex-1">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-primary">
-                Từ vựng ({vocabItems.filter(i => i.videoId === videoId).length})
-              </p>
-              {vocabItems.filter(i => i.videoId === videoId).length > 0 && (
-                <Button size="small" type="link" onClick={() => setVocabDrawerOpen(true)} className="!text-xs !p-0 !h-auto">
-                  Xem tat ca
-                </Button>
-              )}
-            </div>
-            {vocabItems
-              .filter(i => i.videoId === videoId)
-              .slice(0, 5)
-              .map((item) => (
-                <div key={item.id} className="px-3 py-2 rounded-lg hover:bg-white/5 mb-1">
-                  <span className="text-sm font-medium text-white">{item.word}</span>
-                  <span className="text-xs text-slate-400 ml-2">{item.meaning}</span>
-                </div>
-              ))}
-            {vocabItems.filter(i => i.videoId === videoId).length === 0 && (
-              <p className="text-xs text-slate-500 italic">Click vào từ trong phụ đề để lưu</p>
-            )}
+          {/* AI Vocabulary Panel */}
+          <div className="flex-1 min-h-0">
+            <VocabularyPanel
+              videoId={videoId}
+              videoTitle={video?.title ?? ''}
+              currentSegmentWords={currentSegmentWords}
+              savedVocabItems={savedVocabItems}
+              initialWords={vocabWords.map((w: any) => ({
+                id: w.id,
+                word: w.word,
+                meaning: w.meaning ?? '',
+                romanization: w.pronunciation ?? '',
+                partOfSpeech: w.partOfSpeech,
+                difficulty: w.difficulty,
+                example: w.exampleSentence,
+                exampleTranslation: '',
+                frequency: w.frequency,
+              }))}
+              onWordDelete={handleWordDelete}
+              onCreateFlashcards={handleCreateFlashcards}
+            />
           </div>
         </aside>
       </div>
@@ -496,7 +808,7 @@ export default function LearningPlayerPage() {
         {vocabItems.length === 0 ? (
           <div className="p-6 text-center">
             <p className="text-slate-400">Chưa có từ nào được lưu</p>
-            <p className="text-xs text-slate-500 mt-2">Click vao tu Hàn trong phu de khi xem video de luu</p>
+            <p className="text-xs text-slate-500 mt-2">Click vào từ Hàn trong phụ đề khi xem video để lưu</p>
           </div>
         ) : (
           vocabItems.map((item) => (
@@ -508,10 +820,44 @@ export default function LearningPlayerPage() {
               <p className="text-sm text-slate-300 mt-1">{item.meaning}</p>
               {item.reading && <p className="text-xs text-slate-500 mt-0.5">{item.reading}</p>}
               <p className="text-xs text-slate-500 mt-2 italic">&ldquo;{item.context}&rdquo;</p>
+
+              {/* Add to Flashcard buttons */}
+              {flashcardDecks.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-3">
+                  {flashcardDecks.map((deck) => (
+                    <Button
+                      key={deck.id}
+                      size="small"
+                      loading={addingToFlashcard === item.id}
+                      onClick={() => handleAddToFlashcard(item, deck.id)}
+                      className="!text-xs !px-2 !py-0.5 !h-auto"
+                    >
+                      + {deck.name}
+                    </Button>
+                  ))}
+                </div>
+              )}
             </div>
           ))
         )}
       </Drawer>
+
+      {/* Flashcard Create Modal */}
+      <FlashcardCreateModal
+        open={flashcardModalOpen}
+        videoId={videoId}
+        videoTitle={video?.title ?? ''}
+        words={[...currentSegmentWords, ...savedVocabItems, ...vocabWords.map((w: any) => ({
+          id: w.id,
+          word: w.word,
+          meaning: w.meaning ?? '',
+          romanization: w.pronunciation ?? '',
+          example: w.exampleSentence,
+          exampleTranslation: '',
+        }))]}
+        onClose={() => setFlashcardModalOpen(false)}
+        onCreated={() => setFlashcardModalOpen(false)}
+      />
     </div>
   );
 }

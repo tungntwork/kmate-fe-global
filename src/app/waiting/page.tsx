@@ -15,6 +15,7 @@ import {
   RedirectOverlay,
   WaitingHeader,
 } from '@/components/waiting';
+import { api } from '@/lib/api';
 
 const { Text, Title } = Typography;
 
@@ -32,6 +33,9 @@ function WaitingPageContent() {
 
   const [isFeedMinimized, setIsFeedMinimized] = useState(false);
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
+  const [vocabJobId, setVocabJobId] = useState<string | null>(null);
+  const [vocabCompleted, setVocabCompleted] = useState(false);
+  const [vocabProgress, setVocabProgress] = useState(0);
 
   const {
     setJob,
@@ -109,16 +113,70 @@ function WaitingPageContent() {
     setIsFeedMinimized((prev) => !prev);
   }, []);
 
-  // Redirect immediately if job already completed
+  // Redirect only when BOTH subtitles AND vocabulary extraction are complete
   useEffect(() => {
-    if (isCompleted) {
-      const targetUrl = `/learn/${videoId}`;
+    if (isCompleted && vocabCompleted && videoId) {
       const timer = setTimeout(() => {
-        window.location.href = targetUrl;
+        router.push(`/learn/${videoId}`);
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [isCompleted, videoId]);
+  }, [isCompleted, vocabCompleted, videoId]);
+
+  // Trigger vocabulary extraction as soon as subtitle job completes
+  useEffect(() => {
+    if (!isCompleted || !videoId) return;
+    if (vocabJobId || vocabCompleted) return; // already triggered or done
+
+    api.post('/vocabulary/extract', { videoId, mode: 'topic' })
+      .then((res) => {
+        setVocabJobId(res.data.data.jobId);
+      })
+      .catch((err) => {
+        // 409 means an identical job already exists — extract its ID and poll it
+        if (err?.response?.status === 409) {
+          const existingJobId = err?.response?.data?.error?.jobId ?? err?.response?.data?.jobId;
+          if (existingJobId) {
+            setVocabJobId(existingJobId);
+          } else {
+            console.warn('[Waiting] 409 received but no jobId in response — skipping vocab wait');
+            setVocabCompleted(true);
+          }
+        } else {
+          console.warn('[Waiting] vocabulary extract failed:', err?.response?.data ?? err?.message);
+          // Don't block redirect on non-409 errors; user can retry later
+          setVocabCompleted(true);
+        }
+      });
+  }, [isCompleted, vocabJobId, vocabCompleted, videoId]);
+
+  // Poll vocabulary job status
+  useEffect(() => {
+    if (!vocabJobId) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get<{ data: { status: string; progress: number } }>(
+          `/vocabulary/jobs/${vocabJobId}`,
+        );
+        const { status, progress } = res.data.data;
+        setVocabProgress(progress ?? 0);
+        if (status === 'COMPLETED') {
+          setVocabCompleted(true);
+          setVocabJobId(null);
+          clearInterval(interval);
+        } else if (status === 'FAILED') {
+          // Vocab failed — still allow redirect, user can retry later
+          setVocabCompleted(true);
+          setVocabJobId(null);
+          message.warning('Từ vựng trích xuất thất bại — bạn có thể thử lại sau.');
+          clearInterval(interval);
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [vocabJobId]);
 
   // Validate required params
   if (!jobId || !videoId) {
@@ -159,6 +217,9 @@ function WaitingPageContent() {
               <WaitingProgressCard
                 videoTitle={title ?? undefined}
                 videoThumbnail={thumbnail ?? undefined}
+                vocabCompleted={vocabCompleted}
+                vocabProgress={vocabProgress}
+                subtitleCompleted={isCompleted}
               />
             </div>
 
@@ -174,19 +235,26 @@ function WaitingPageContent() {
                 <div className="bg-dark-300 rounded-2xl p-6 border border-dark-200">
                   <div className="flex items-start gap-4">
                     <div className={`w-3 h-3 rounded-full mt-1.5 ${
-                      isCompleted ? 'bg-green-400' : isFailed ? 'bg-red-400' : 'bg-sky-400 animate-pulse'
+                      isCompleted && vocabCompleted ? 'bg-green-400' :
+                      isCompleted ? 'bg-yellow-400 animate-pulse' :
+                      isFailed ? 'bg-red-400' :
+                      'bg-sky-400 animate-pulse'
                     }`} />
                     <div className="flex-1">
                       <Title level={4} className="text-white mt-0 mb-2">
-                        {isCompleted
+                        {isCompleted && vocabCompleted
                           ? 'Processing Complete!'
+                          : isCompleted && !vocabCompleted
+                          ? 'Subtitles ready — extracting vocabulary...'
                           : isFailed
                           ? 'Processing Failed'
                           : 'AI is working on your subtitles'}
                       </Title>
                       <Text className="text-gray-400 text-sm block mb-4">
-                        {isCompleted
-                          ? 'Your subtitles are ready. Redirecting you to the learning player...'
+                        {isCompleted && vocabCompleted
+                          ? 'Subtitles and vocabulary are ready. Redirecting you to the learning player...'
+                          : isCompleted && !vocabCompleted
+                          ? `Từ vựng đang được trích xuất theo chủ đề... (${Math.round(vocabProgress)}%)`
                           : isFailed
                           ? errorMessage ?? 'Something went wrong during processing.'
                           : stage
@@ -241,10 +309,10 @@ function WaitingPageContent() {
                     </>
                   )}
 
-                  {isCompleted && (
+                  {isCompleted && vocabCompleted && (
                     <Button
                       type="primary"
-                      onClick={() => window.location.href = `/learn/${videoId}`}
+                      onClick={() => router.push(`/learn/${videoId}`)}
                       className="bg-sky-500 hover:bg-sky-600 border-sky-500"
                     >
                       Watch Now

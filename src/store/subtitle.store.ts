@@ -69,6 +69,7 @@ export const useSubtitleStore = create<SubtitleState & SubtitleActions>()(
       ...initialState,
 
       setSegments: (segments, videoId, language) => {
+        const currentTime = get().currentSegment?.startTime ?? 0;
         set({
           segments,
           videoId,
@@ -78,6 +79,9 @@ export const useSubtitleStore = create<SubtitleState & SubtitleActions>()(
           isLoading: false,
           hasError: false,
         });
+        if (segments.length) {
+          get().updateCurrentSegment(currentTime);
+        }
       },
 
       clearSegments: () => set({

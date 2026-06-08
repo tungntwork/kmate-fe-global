@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Progress, Button, Result, Spin, Space, Typography } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, PlayCircleOutlined } from '@ant-design/icons';
@@ -37,12 +38,17 @@ export function SubtitleGenerationModal({
   onSubtitleReady,
   onSubtitleError,
 }: SubtitleGenerationModalProps) {
+  const router = useRouter();
   const { progressPercent, stageLabel, error, completed, ready, failed, reset, isConnected, jobCreated } =
     useSubtitleSocket({ videoId, enabled: open });
 
   const requestMutation = useRequestSubtitle();
+  const [jobIdRef, setJobIdRef] = useState<string | null>(null);
+  const jobIdFromSocket = jobCreated?.jobId ?? null;
+  const resolvedJobId = jobIdRef ?? requestMutation.data?.jobId ?? jobIdFromSocket;
+
   const { data: jobStatus } = useSubtitleJobStatus(
-    jobCreated?.jobId ?? requestMutation.data?.jobId ?? null,
+    resolvedJobId,
   );
   const { data: existingSubtitle } = useSubtitle(videoId);
 
@@ -53,11 +59,24 @@ export function SubtitleGenerationModal({
     if (jobStatus?.status === 'FAILED') return 'failed';
     if (completed || ready) return 'completed';
     if (requestMutation.data?.status === 'CACHED' || requestMutation.data?.status === 'EXISTS') return 'cached';
-    // jobCreated from WebSocket arrives immediately when job is queued on server (before HTTP response)
-    if (jobCreated?.jobId) return 'queued';
+    if (resolvedJobId) return 'queued';
     if (progressPercent > 0) return 'processing';
     return 'idle';
-  }, [requestMutation.isPending, requestMutation.data?.status, requestMutation.data?.jobId, failed, completed, ready, progressPercent, jobCreated?.jobId, jobStatus?.status]);
+  }, [requestMutation.isPending, requestMutation.data?.status, failed, completed, ready, progressPercent, resolvedJobId, jobStatus?.status]);
+
+  // Capture the jobId from the mutation response once it arrives
+  useEffect(() => {
+    if (requestMutation.data?.jobId && jobIdRef === null) {
+      setJobIdRef(requestMutation.data.jobId);
+    }
+  }, [requestMutation.data?.jobId, jobIdRef]);
+
+  // Capture the jobId from WebSocket event once it arrives
+  useEffect(() => {
+    if (jobCreated?.jobId && jobIdRef === null) {
+      setJobIdRef(jobCreated.jobId);
+    }
+  }, [jobCreated?.jobId, jobIdRef]);
 
   // Trigger subtitle ready callback
   useEffect(() => {
@@ -81,6 +100,7 @@ export function SubtitleGenerationModal({
   }, [jobStatus?.status, jobStatus?.errorMessage, onSubtitleError]);
 
   const handleRequest = async () => {
+    setJobIdRef(null);
     reset();
     try {
       await requestMutation.mutateAsync({ videoId, youtubeUrl });
@@ -99,12 +119,17 @@ export function SubtitleGenerationModal({
     }
   }, [failed?.jobId, queryClient]);
 
-  // When modal opens, re-fetch subtitle status to catch jobs created in previous sessions
+  // When modal opens, trigger subtitle generation only if no job is in progress
+  // Guard: skip if we already have a resolved job ID (from a previous attempt in this session)
   useEffect(() => {
-    if (open && !existingSubtitle && !requestMutation.isPending && !requestMutation.data && !jobCreated) {
-      handleRequest();
-    }
-  }, [open, existingSubtitle, requestMutation.isPending, requestMutation.data, jobCreated]);
+    if (!open) return;
+    if (existingSubtitle) return;
+    if (requestMutation.isPending) return;
+    if (requestMutation.data) return;
+    if (jobIdRef) return;
+    handleRequest();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const renderContent = () => {
     const s = status();
@@ -192,7 +217,10 @@ export function SubtitleGenerationModal({
     }
 
     // Processing (includes 'queued' state — job is queued but not started yet)
-    const displayPercent = progressPercent ?? jobStatus?.progress ?? 0;
+    // Prefer WebSocket progress; fall back to polling data when WS events haven't arrived yet
+    const wsProgress = progressPercent ?? 0;
+    const pollingProgress = jobStatus?.progress ?? 0;
+    const displayPercent = wsProgress > 0 ? wsProgress : pollingProgress;
     const displayStage = jobStatus?.stage ?? stageLabel ?? (s === 'queued' ? 'Job queued...' : 'Processing...');
     const stageText = SUBTITLE_STAGE_LABELS[displayStage] ?? displayStage;
 
@@ -210,9 +238,14 @@ export function SubtitleGenerationModal({
         <div className="mt-6">
           <Text strong className="text-lg">{stageText}</Text>
           <Text className="block text-gray-500 mt-1 text-sm">
-            {jobStatus
-              ? `${jobStatus.progress.toFixed(0)}% complete — ${jobStatus.retryCount > 0 ? `retry ${jobStatus.retryCount}/3` : ''}`
-              : `${displayPercent.toFixed(0)}% complete`}
+            {displayPercent > 0
+              ? `${displayPercent.toFixed(0)}% complete`
+              : jobStatus
+              ? 'Processing...'
+              : 'Waiting in queue...'}
+            {jobStatus?.retryCount && jobStatus.retryCount > 0
+              ? ` — retry ${jobStatus.retryCount}/3`
+              : ''}
           </Text>
           {!isConnected && (
             <Text type="warning" className="block mt-2 text-xs">
@@ -225,18 +258,17 @@ export function SubtitleGenerationModal({
               type="link"
               icon={<PlayCircleOutlined />}
               onClick={() => {
-                const jobId = requestMutation.data?.jobId;
-                if (jobId) {
+                if (resolvedJobId) {
                   const params = new URLSearchParams({
-                    jobId,
+                    jobId: resolvedJobId,
                     videoId,
                     title: videoTitle ?? videoId,
                     thumbnail: videoThumbnail ?? '',
                   });
-                  window.location.href = `/waiting?${params.toString()}`;
+                  router.push(`/waiting?${params.toString()}`);
                 }
               }}
-              disabled={!requestMutation.data?.jobId}
+              disabled={!resolvedJobId}
               className="text-sky-400 hover:text-sky-300 text-sm"
             >
               Watch short videos while processing

@@ -616,7 +616,7 @@ export const flashcardService = {
   getFlashcards: (params?: { deckId?: string; page?: number; limit?: number }) =>
     api.get<{ data: Flashcard[]; pagination: Pagination }>('/flashcards', { params }),
 
-  createFlashcard: (data: { deckId: string; front: string; back: string; example?: string; pronunciation?: string }) =>
+  createFlashcard: (data: { word: string; meaning: string; exampleSentence?: string; exampleTranslation?: string; pronunciation?: string; deckId?: string; videoId?: string }) =>
     api.post<{ data: Flashcard }>('/flashcards', data),
 
   updateFlashcard: (id: string, data: Partial<{ front: string; back: string; example: string; pronunciation: string }>) =>
@@ -631,6 +631,9 @@ export const flashcardService = {
   review: (data: { flashcardId: string; quality: number }) =>
     api.post<{ data: Flashcard }>('/flashcards/review', data),
 
+  createFromVocabulary: (data: { videoId?: string; wordIds: string[]; deckName?: string; deckId?: string }) =>
+    api.post<{ data: { deckId: string; createdCount: number } }>('/flashcards/from-vocabulary', data),
+
   getStats: () =>
     api.get<{ data: FlashcardStats }>('/flashcards/stats'),
 };
@@ -638,46 +641,104 @@ export const flashcardService = {
 // ============================================================
 // QUIZ
 // ============================================================
+export interface QuizQuestionOption {
+  id: string;
+  text: string;
+  isCorrect: boolean;
+}
+
 export interface QuizQuestion {
   id: string;
   type: string;
   question: string;
-  options: string[];
-  correctIndex: number;
-  explanation?: string;
-}
-
-export interface Quiz {
-  id: string;
-  videoId: string;
-  title: string;
-  questions: QuizQuestion[];
-  totalQuestions: number;
-  timeLimit: number;
-  difficulty: string;
-  isCompleted: boolean;
-  score?: number;
+  questionKorean: string | null;
+  options: QuizQuestionOption[];
 }
 
 export interface QuizResult {
   quizId: string;
   score: number;
+  correctAnswers: number;
+  totalQuestions: number;
+  xpEarned: number;
+  timeSpent: number;
+  feedback: {
+    summary: string;
+    strengths: string[];
+    weaknesses: string[];
+    recommendations: string[];
+    vocabularyToReview: Array<{ word: string; meaning: string; reason: string }>;
+  };
+  review: Array<{
+    questionId: string;
+    question: string;
+    questionKorean: string | null;
+    yourAnswer: string | null;
+    correctAnswer: string;
+    options: QuizQuestionOption[];
+    isCorrect: boolean;
+  }>;
+}
+
+export interface QuizHistoryItem {
+  id: string;
+  videoId: string;
+  videoTitle: string;
+  videoThumbnail: string | null;
+  type: string;
   totalQuestions: number;
   correctAnswers: number;
-  xpEarned: number;
-  coinEarned: number;
-  timeTaken: number;
+  score: number;
+  timeSpent: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface QuizDeck {
+  id: string;
+  deckId?: string;
+  deckName?: string;
+  mode: 'deck' | 'random' | 'ai';
+  totalQuestions: number;
+  timeLimit: number;
+  expiresAt: string;
+  questions: QuizQuestion[];
 }
 
 export const quizService = {
-  getQuiz: (videoId: string) =>
-    api.get<{ data: Quiz }>(`/quiz/${videoId}`),
-
-  submitQuiz: (data: { videoId: string; answers: Record<string, number>; timeTaken: number }) =>
-    api.post<{ data: QuizResult }>('/quiz/submit', data),
-
+  // List quiz history
   getHistory: (params?: { page?: number; limit?: number }) =>
-    api.get<{ data: unknown[]; pagination: Pagination }>('/quiz/history', { params }),
+    api.get<{ data: { quizzes: QuizHistoryItem[]; pagination: Pagination } }>('/quiz', { params }),
+
+  // Get user quiz stats
+  getStats: () =>
+    api.get<{ data: {
+      totalQuizzes: number;
+      avgScore: number;
+      bestScore: number;
+      bestCorrect: number;
+      bestTotal: number;
+      totalCorrect: number;
+      totalAnswered: number;
+    } }>('/quiz/stats'),
+
+  // Create a new quiz from deck / random / ai
+  createQuiz: (data: { deckId?: string; videoId?: string; mode?: 'deck' | 'random' | 'ai'; count?: number }) =>
+    api.post<{ data: QuizDeck }>('/quiz', data),
+
+  // Get quiz with questions by quizId
+  getQuiz: (quizId: string) =>
+    api.get<{ data: QuizDeck }>(`/quiz/${quizId}`),
+
+  // Submit quiz answers
+  submitQuiz: (data: {
+    quizId: string;
+    answers: Array<{ questionId: string; answer: string; timeSpent?: number }>;
+  }) => api.post<{ data: QuizResult }>('/quiz/submit', data),
+
+  // Retry a quiz
+  retryQuiz: (quizId: string, data?: { count?: number }) =>
+    api.post<{ data: QuizDeck }>(`/quiz/${quizId}/retry`, data ?? {}),
 };
 
 // ============================================================

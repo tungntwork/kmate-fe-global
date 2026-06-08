@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
-import { ConfigProvider } from 'antd';
+import { App } from 'antd';
 import { QueryProvider } from '@/lib/query-provider';
 import { SocketProvider } from '@/lib/socket-provider';
 import '@/styles/globals.css';
@@ -18,6 +18,7 @@ const theme = {
     colorBgBase: '#0B0B0F',
     colorTextBase: '#ffffff',
     colorBgContainer: '#151c2a',
+    colorBgElevated: '#151c2a',
     borderRadius: 8,
     fontFamily: 'Inter, system-ui, sans-serif',
   },
@@ -32,13 +33,13 @@ export default function RootLayout({
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className="min-h-screen bg-background-dark text-white font-display antialiased" suppressHydrationWarning>
         <AntdRegistry>
-          <ConfigProvider theme={theme}>
+          <App theme={{ theme }}>
             <QueryProvider>
               <SocketProvider>
                 {children}
               </SocketProvider>
             </QueryProvider>
-          </ConfigProvider>
+          </App>
         </AntdRegistry>
       </body>
     </html>

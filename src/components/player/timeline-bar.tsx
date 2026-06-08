@@ -1,19 +1,23 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { Slider, Tooltip } from 'antd';
+import { useState, useRef, useCallback, useEffect, useMemo, memo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import { Tooltip } from 'antd';
 import { usePlayerStore } from '@/store/player.store';
 import { useSubtitleSync } from '@/hooks/use-subtitle-sync';
 
-export function TimelineBar() {
-  const {
-    currentTime,
-    duration,
-    buffered,
-    video,
-    seek,
-    isPlaying,
-  } = usePlayerStore();
+export const TimelineBar = memo(function TimelineBar() {
+  // Use useShallow so the object ref is only new when values actually change
+  const { currentTime, duration, buffered, video, seek, isPlaying } = usePlayerStore(
+    useShallow((s) => ({
+      currentTime: s.currentTime,
+      duration: s.duration,
+      buffered: s.buffered,
+      video: s.video,
+      seek: s.seek,
+      isPlaying: s.isPlaying,
+    }))
+  );
 
   const { formatTime, jumpToSegment, segments, currentSegmentIndex } = useSubtitleSync();
 
@@ -24,6 +28,33 @@ export function TimelineBar() {
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufferedWidth = duration > 0 ? (buffered / 100) * 100 : 0;
+
+  // Memoize segment dots — they only depend on segments + duration, not currentTime
+  // This prevents re-rendering 100-200+ dots on every currentTime change
+  const segmentDots = useMemo(() => {
+    if (!segments.length || !duration) return null;
+    return (
+      <>
+        {segments.map((segment, index) => (
+          <div
+            key={segment.id}
+            className={`absolute top-1/2 -translate-y-1/2 w-1 h-1 rounded-full transition-colors ${
+              index === currentSegmentIndex
+                ? 'bg-primary-400'
+                : 'bg-white/20 hover:bg-white/40'
+            }`}
+            style={{
+              left: `${(segment.startTime / duration) * 100}%`,
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              jumpToSegment(index);
+            }}
+          />
+        ))}
+      </>
+    );
+  }, [segments, duration, currentSegmentIndex, jumpToSegment]);
 
   // Handle mouse move on timeline
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -58,22 +89,29 @@ export function TimelineBar() {
 
   // Handle drag
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation(); // prevent player container's onClick from firing togglePlay
     setIsDragging(true);
     handleClick(e);
   }, [handleClick]);
+
+  // Drag logic: seek while dragging
+  const seekRef = useRef(seek);
+  seekRef.current = seek;
+  const durationRef = useRef(duration);
+  durationRef.current = duration;
 
   useEffect(() => {
     if (!isDragging) return;
 
     const handleMouseMoveGlobal = (e: MouseEvent) => {
-      if (!trackRef.current || duration === 0) return;
+      if (!trackRef.current || durationRef.current === 0) return;
 
       const rect = trackRef.current.getBoundingClientRect();
       const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
       const percentage = x / rect.width;
-      const time = percentage * duration;
+      const time = percentage * durationRef.current;
 
-      seek(time);
+      seekRef.current(time);
     };
 
     const handleMouseUp = () => {
@@ -87,7 +125,7 @@ export function TimelineBar() {
       window.removeEventListener('mousemove', handleMouseMoveGlobal);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, duration, seek]);
+  }, [isDragging]);
 
   // Get chapter markers
   const chapterMarkers = video?.chapters?.map((chapter) => ({
@@ -126,11 +164,11 @@ export function TimelineBar() {
       {/* Timeline track */}
       <div
         ref={trackRef}
-        className="relative h-1.5 bg-white/20 rounded-full cursor-pointer group-hover/timeline:h-2 transition-all duration-150"
+        className="relative h-1.5 bg-white/20 rounded-full cursor-pointer group-hover/timeline:h-2 transition-all duration-150 overflow-hidden"
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         onMouseDown={handleMouseDown}
-        onClick={handleClick}
+        onClick={(e) => { e.stopPropagation(); handleClick(e); }}
       >
         {/* Buffered */}
         <div
@@ -161,25 +199,9 @@ export function TimelineBar() {
           </Tooltip>
         ))}
 
-        {/* Segment markers (subtle dots) */}
-        {segments.map((segment, index) => (
-          <div
-            key={segment.id}
-            className={`absolute top-1/2 -translate-y-1/2 w-1 h-1 rounded-full transition-colors ${
-              index === currentSegmentIndex
-                ? 'bg-primary-400'
-                : 'bg-white/20 hover:bg-white/40'
-            }`}
-            style={{
-              left: `${duration > 0 ? (segment.startTime / duration) * 100 : 0}%`,
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              jumpToSegment(index);
-            }}
-          />
-        ))}
+        {/* Segment markers (subtle dots) — memoized to prevent re-render on every currentTime update */}
+        {segmentDots}
       </div>
     </div>
   );
-}
+});

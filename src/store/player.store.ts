@@ -36,13 +36,14 @@ export interface PlaybackSettings {
 interface PlayerState {
   // Video info
   video: VideoInfo | null;
-  
+
   // Playback state
   isPlaying: boolean;
   currentTime: number;
   duration: number;
   buffered: number;
   isLoading: boolean;
+  pausedByHover: boolean; // true when video was auto-paused due to hover
   hasError: boolean;
   errorMessage: string;
   isFullscreen: boolean;
@@ -63,7 +64,11 @@ interface PlayerActions {
   // Video actions
   setVideo: (video: VideoInfo | null) => void;
   setPlayerRef: (ref: unknown) => void;
-  
+
+  // Hover pause actions
+  pauseByHover: () => void;
+  resumeFromHover: () => void;
+
   // Playback actions
   play: () => void;
   pause: () => void;
@@ -117,7 +122,8 @@ const initialState: PlayerState = {
   currentTime: 0,
   duration: 0,
   buffered: 0,
-  isLoading: true,
+  isLoading: false,
+  pausedByHover: false,
   hasError: false,
   errorMessage: '',
   isFullscreen: false,
@@ -133,19 +139,54 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
     (set, get) => ({
       ...initialState,
 
-      setVideo: (video) => set({ video, isLoading: true, hasError: false }),
+      setVideo: (video) => set({ video, hasError: false }),
       setPlayerRef: (ref) => set({ playerRef: ref }),
 
+      pauseByHover: () => {
+        const player = get().playerRef as globalThis.YT.Player | null;
+        if (!player) return;
+        // YouTube IFrame API uses pauseVideo() — fallback to generic pause
+        if (typeof player.pauseVideo === 'function') {
+          player.pauseVideo();
+        } else {
+          (player as unknown as { pause: () => void }).pause?.();
+        }
+        set({ isPlaying: false, pausedByHover: true });
+      },
+
+      resumeFromHover: () => {
+        const { pausedByHover } = get();
+        if (!pausedByHover) return;
+        const player = get().playerRef as globalThis.YT.Player | null;
+        if (!player) return;
+        if (typeof player.playVideo === 'function') {
+          player.playVideo();
+        } else {
+          (player as unknown as { play: () => void }).play?.();
+        }
+        set({ isPlaying: true, pausedByHover: false });
+      },
+
       play: () => {
-        const player = get().playerRef as { play?: () => void } | null;
-        player?.play?.();
-        set({ isPlaying: true });
+        const player = get().playerRef as globalThis.YT.Player | null;
+        if (!player) return;
+        if (typeof player.playVideo === 'function') {
+          player.playVideo();
+        } else {
+          (player as unknown as { play: () => void }).play?.();
+        }
+        set({ isPlaying: true, pausedByHover: false });
       },
 
       pause: () => {
-        const player = get().playerRef as { pause?: () => void } | null;
-        player?.pause?.();
-        set({ isPlaying: false });
+        const player = get().playerRef as globalThis.YT.Player | null;
+        if (!player) return;
+        if (typeof player.pauseVideo === 'function') {
+          player.pauseVideo();
+        } else {
+          (player as unknown as { pause: () => void }).pause?.();
+        }
+        set({ isPlaying: false, pausedByHover: false });
       },
 
       togglePlay: () => {
@@ -158,9 +199,13 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       },
 
       seek: (time) => {
-        const player = get().playerRef as { currentTime?: (t: number) => void } | null;
+        const player = get().playerRef as globalThis.YT.Player | null;
+        if (!player) return;
         const clampedTime = Math.max(0, Math.min(time, get().duration));
-        player?.currentTime?.(clampedTime);
+        // YouTube IFrame API: seekTo(seconds, allowSeekAhead)
+        if (typeof (player as unknown as { seekTo: (t: number, a: boolean) => void }).seekTo === 'function') {
+          (player as unknown as { seekTo: (t: number, a: boolean) => void }).seekTo(clampedTime, true);
+        }
         set({ currentTime: clampedTime });
       },
 
@@ -177,31 +222,51 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       setHasError: (hasError, message = '') => set({ hasError, errorMessage: message }),
       setIsFullscreen: (isFullscreen) => set({ isFullscreen }),
       toggleFullscreen: () => {
+        const container = document.querySelector('.player-container');
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else if (container) {
+          container.requestFullscreen();
+        }
         set((state) => ({ isFullscreen: !state.isFullscreen }));
       },
 
       setSpeed: (speed) => {
-        const player = get().playerRef as { playbackRate?: (r: number) => void } | null;
-        player?.playbackRate?.(speed);
+        const player = get().playerRef as globalThis.YT.Player | null;
+        if (player && typeof player.setPlaybackRate === 'function') {
+          player.setPlaybackRate(speed);
+        }
         set((state) => ({
           settings: { ...state.settings, speed },
         }));
       },
 
       setVolume: (volume) => {
-        const player = get().playerRef as { volume?: (v: number) => void } | null;
-        player?.volume?.(volume);
+        const player = get().playerRef as globalThis.YT.Player | null;
+        if (player && typeof player.setVolume === 'function') {
+          player.setVolume(volume * 100);
+        }
         set((state) => ({
           settings: { ...state.settings, volume, muted: volume === 0 },
         }));
       },
 
       toggleMute: () => {
-        const player = get().playerRef as { muted?: (m: boolean) => void } | null;
+        const player = get().playerRef as globalThis.YT.Player | null;
         const { muted, volume } = get().settings;
-        player?.muted?.(!muted);
+        if (player && typeof player.mute === 'function') {
+          if (muted) {
+            player.unMute();
+          } else {
+            player.mute();
+          }
+        }
         set((state) => ({
-          settings: { ...state.settings, muted: !muted, volume: !muted ? 0 : volume || 1 },
+          settings: {
+            ...state.settings,
+            muted: !muted,
+            volume: !muted ? 0 : volume || 1,
+          },
         }));
       },
 

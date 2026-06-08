@@ -1,425 +1,936 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Button, Spin } from 'antd';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { Button, Spin, message } from 'antd';
 import {
   QuestionOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   RightOutlined,
+  ArrowLeftOutlined,
+  ReloadOutlined,
+  ThunderboltOutlined,
+  BookOutlined,
   TrophyOutlined,
-  SafetyCertificateOutlined,
+  ClockCircleOutlined,
+  FireOutlined,
 } from '@ant-design/icons';
-import { motion } from 'framer-motion';
-import { quizService, type Quiz } from '@/lib/api-services';
+import { motion, AnimatePresence } from 'framer-motion';
+import { quizService, flashcardService } from '@/lib/api-services';
+import { useQuizStore } from '@/store/quiz.store';
 
-type QuizStatus = 'completed' | 'in-progress' | 'not-started';
-type QuizCategory = 'Vocabulary' | 'Grammar' | 'Mixed';
+type Screen = 'home' | 'quiz' | 'result';
 
-interface QuizCard {
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface DeckInfo {
   id: string;
-  title: string;
-  category: QuizCategory;
-  level: string;
-  levelColor: string;
-  totalQuestions: number;
-  score: number | null;
-  status: QuizStatus;
-  progress: number;
+  name: string;
+  cardCount: number;
+  dueCount: number;
   color: string;
-  questions: Array<{ id: string; question: string; options: string[]; correctIndex: number; explanation?: string }>;
+  icon: string;
 }
 
-const COLORS = ['#00e5ff', '#7c4dff', '#f59e0b', '#22c55e', '#ec4899'];
+interface UserStats {
+  totalQuizzes: number;
+  avgScore: number;
+  bestScore: number;
+  bestCorrect: number;
+  bestTotal: number;
+}
 
-function KMateMascot({ message }: { message?: string }) {
-  const msgs = ['Bạn làm tốt lắm! Tiến lên nào!', 'Giỏi quá! Học tiếp thôi!', 'Chính xác! Hãy giữ nhịp đều nhé!'];
-  const displayMessage = message ?? msgs[Math.floor(Math.random() * msgs.length)];
+const DECK_COLORS = ['#7C4DFF', '#00e5ff', '#f59e0b', '#22c55e', '#ec4899', '#06b6d4'];
+const OPTION_LABELS = ['A', 'B', 'C', 'D'];
+
+// ─── Score Circle ─────────────────────────────────────────────────────────────
+
+function ScoreCircle({ score, size = 160 }: { score: number; size?: number }) {
+  const radius = (size - 16) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const filled = circumference * (score / 100);
+  const color = score >= 80 ? '#22c55e' : score >= 50 ? '#f59e0b' : '#ef4444';
+
   return (
-    <div className="fixed bottom-8 right-8 z-40 flex flex-col items-end gap-2 animate-fade-in">
-      <div className="relative bg-white/10 backdrop-blur-md border border-primary/30 rounded-2xl px-4 py-3 max-w-[220px] shadow-lg">
-        <div className="absolute -right-2 bottom-4 w-4 h-4 bg-white/10 border-r border-b border-primary/30 rotate-45 transform translate-y-1" />
-        <p className="text-xs text-white leading-relaxed font-medium relative z-10">{displayMessage}</p>
-      </div>
-      <div className="relative">
-        <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse" />
-        <div className="relative w-16 h-16 rounded-full border-2 border-primary/40 bg-primary/10 flex items-center justify-center">
-          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-            <rect x="8" y="14" width="24" height="20" rx="4" fill="#7C4DFF" />
-            <rect x="12" y="8" width="16" height="8" rx="3" fill="#00e5ff" />
-            <circle cx="15" cy="22" r="2" fill="#00e5ff" />
-            <circle cx="25" cy="22" r="2" fill="#00e5ff" />
-            <rect x="17" y="27" width="6" height="2" rx="1" fill="#ffffff" opacity="0.8" />
-            <circle cx="20" cy="5" r="2" fill="#f59e0b" />
-          </svg>
-        </div>
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={12} />
+        <circle
+          cx={size / 2} cy={size / 2} r={radius} fill="none"
+          stroke={color} strokeWidth={12}
+          strokeDasharray={`${filled} ${circumference}`}
+          strokeLinecap="round"
+          style={{ filter: `drop-shadow(0 0 8px ${color}80)` }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-4xl font-black" style={{ color }}>{Math.round(score)}%</span>
+        <span className="text-xs text-slate-400 mt-1">Điểm</span>
       </div>
     </div>
   );
 }
 
-function QuizCard({ quiz, onStart }: { quiz: QuizCard; onStart: () => void }) {
+// ─── Deck Card ───────────────────────────────────────────────────────────────
+
+function DeckCard({
+  deck,
+  mode,
+  color,
+  onStart,
+  loading,
+}: {
+  deck?: DeckInfo;
+  mode: 'random' | 'ai';
+  color: string;
+  onStart: () => void;
+  loading: boolean;
+}) {
   const [hovered, setHovered] = useState(false);
-  const isCompleted = quiz.status === 'completed';
+  const isRandom = mode === 'random';
+  const label = isRandom ? 'Quiz ngẫu nhiên' : 'Quiz thông minh (AI)';
+  const sublabel = isRandom ? 'Hỏi từ tất cả các bộ thẻ' : 'Câu hỏi được tạo bởi AI';
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="user-glass-card p-6 flex flex-col gap-4 cursor-pointer transition-all duration-300"
+      whileHover={{ scale: 1.02 }}
+      transition={{ duration: 0.3 }}
+      className="relative rounded-2xl p-6 cursor-pointer select-none"
       style={{
-        borderColor: hovered ? quiz.color + '60' : 'rgba(255,255,255,0.1)',
-        boxShadow: hovered ? `0 0 20px ${quiz.color}30` : 'none',
+        background: 'rgba(21,28,42,0.8)',
+        border: `1px solid ${hovered ? color + '60' : 'rgba(255,255,255,0.08)'}`,
+        boxShadow: hovered ? `0 0 24px ${color}25` : 'none',
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={onStart}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
-            style={{ color: quiz.color, backgroundColor: quiz.color + '15' }}>{quiz.category}</span>
-          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
-            style={{ color: quiz.levelColor, backgroundColor: quiz.levelColor + '15' }}>{quiz.level}</span>
+      <div className="flex items-start gap-4">
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shrink-0"
+          style={{ background: color + '20', border: `1px solid ${color}30` }}
+        >
+          {isRandom ? <ThunderboltOutlined style={{ color }} /> : <QuestionOutlined style={{ color }} />}
         </div>
-        <span className="text-xs text-slate-400">{quiz.totalQuestions} câu</span>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-white font-bold text-base mb-0.5">{label}</h3>
+          <p className="text-slate-500 text-xs">{sublabel}</p>
+        </div>
       </div>
-      <h3 className="text-lg font-bold text-white">{quiz.title}</h3>
-      {isCompleted && (
-        <div className="flex items-center gap-2">
-          <TrophyOutlined style={{ color: '#f59e0b', fontSize: 16 }} />
-          <span className="text-sm font-bold text-white">{quiz.score}%</span>
-          <span className="text-xs text-slate-400">hoàn thành</span>
+      {loading ? (
+        <div className="mt-4 flex justify-center">
+          <Spin size="small" />
         </div>
+      ) : (
+        <Button
+          type="primary"
+          block
+          className="mt-4 !font-bold !rounded-xl !h-10"
+          style={{ background: color + '20', border: `1px solid ${color}40`, color }}
+        >
+          Bắt đầu quiz
+        </Button>
       )}
-      <div className="flex items-center justify-between pt-1 mt-auto">
-        <div className="flex items-center gap-1.5">
-          {isCompleted ? (
-            <>
-              <CheckCircleOutlined style={{ color: '#22c55e', fontSize: 14 }} />
-              <span className="text-xs text-slate-400">Hoàn thành</span>
-            </>
-          ) : (
-            <>
-              <QuestionOutlined style={{ color: quiz.color, fontSize: 14 }} />
-              <span className="text-xs text-slate-400">Xem chi tiết</span>
-            </>
-          )}
-        </div>
-        <button
-          className="text-xs font-bold px-4 py-2 rounded-xl transition-all hover:scale-105 active:scale-95"
-          style={{ backgroundColor: quiz.color + '20', color: quiz.color, border: `1px solid ${quiz.color}40` }}
-          onClick={(e) => { e.stopPropagation(); onStart(); }}>
-          {isCompleted ? 'Xem lại' : 'Làm quiz'}
-        </button>
-      </div>
     </motion.div>
   );
 }
 
-function StatsBar({ quizzes }: { quizzes: QuizCard[] }) {
-  const completed = quizzes.filter(q => q.status === 'completed').length;
-  const scores = quizzes.filter(q => q.score !== null).map(q => q.score as number);
-  const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+// ─── Quiz Home Screen ────────────────────────────────────────────────────────
+
+function QuizHomeScreen({
+  decks,
+  stats,
+  loading,
+  onStartQuiz,
+}: {
+  decks: DeckInfo[];
+  stats: UserStats | null;
+  loading: boolean;
+  onStartQuiz: (mode: 'deck' | 'random' | 'ai', deckId?: string) => void;
+}) {
+  const [deckLoading, setDeckLoading] = useState<'random' | 'ai' | null>(null);
+
+  const handleSpecialStart = async (mode: 'random' | 'ai') => {
+    setDeckLoading(mode);
+    await onStartQuiz(mode);
+    setDeckLoading(null);
+  };
+
   return (
-    <div className="grid grid-cols-3 gap-4">
-      <div className="user-glass-card p-4 flex flex-col items-center gap-1">
-        <span className="text-2xl font-extrabold text-white">{quizzes.length}</span>
-        <span className="text-xs text-slate-400">Tổng quiz</span>
+    <div className="space-y-8 animate-fade-in">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl lg:text-4xl font-extrabold text-white">
+          Luyện tập{' '}
+          <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Quiz</span>
+        </h1>
+        <p className="text-slate-400 text-sm mt-1 flex items-center gap-2">
+          <QuestionOutlined className="text-primary" />
+          Kiểm tra kiến thức từ các bộ flashcard của bạn.
+        </p>
       </div>
-      <div className="user-glass-card p-4 flex flex-col items-center gap-1">
-        <span className="text-2xl font-extrabold text-green-400">{completed}</span>
-        <span className="text-xs text-slate-400">Đã hoàn thành</span>
+
+      {/* Stats bar */}
+      {stats && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="user-glass-card p-4 flex flex-col items-center gap-1">
+            <TrophyOutlined className="text-lg text-amber-400" />
+            <span className="text-2xl font-extrabold text-white">{stats.totalQuizzes}</span>
+            <span className="text-xs text-slate-500">Tổng quiz</span>
+          </div>
+          <div className="user-glass-card p-4 flex flex-col items-center gap-1">
+            <FireOutlined className="text-lg text-green-400" />
+            <span className="text-2xl font-extrabold text-white">
+              {stats.avgScore > 0 ? `${Math.round(stats.avgScore)}%` : '—'}
+            </span>
+            <span className="text-xs text-slate-500">Điểm TB</span>
+          </div>
+          <div className="user-glass-card p-4 flex flex-col items-center gap-1">
+            <ClockCircleOutlined className="text-lg text-primary-400" />
+            <span className="text-2xl font-extrabold text-white">
+              {stats.bestScore > 0 ? `${Math.round(stats.bestScore)}%` : '—'}
+            </span>
+            <span className="text-xs text-slate-500">Điểm cao nhất</span>
+          </div>
+        </div>
+      )}
+
+      {/* Special quiz modes */}
+      <div>
+        <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-3">Chế độ đặc biệt</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <DeckCard
+            mode="random"
+            color={DECK_COLORS[1]}
+            onStart={() => handleSpecialStart('random')}
+            loading={deckLoading === 'random'}
+          />
+          <DeckCard
+            mode="ai"
+            color={DECK_COLORS[0]}
+            onStart={() => handleSpecialStart('ai')}
+            loading={deckLoading === 'ai'}
+          />
+        </div>
       </div>
-      <div className="user-glass-card p-4 flex flex-col items-center gap-1">
-        <span className="text-2xl font-extrabold text-amber-400">{avgScore > 0 ? `${avgScore}%` : '—'}</span>
-        <span className="text-xs text-slate-400">Điểm TB</span>
+
+      {/* Flashcard decks */}
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Spin size="large" />
+        </div>
+      ) : decks.length > 0 ? (
+        <div>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-3">Bộ flashcard của bạn</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {decks.map((deck, i) => (
+              <motion.div
+                key={deck.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="relative rounded-2xl p-5 cursor-pointer select-none"
+                style={{
+                  background: 'rgba(21,28,42,0.8)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+                whileHover={{ scale: 1.02, borderColor: deck.color + '60' }}
+                onClick={() => onStartQuiz('deck', deck.id)}
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
+                    style={{ background: deck.color + '20', color: deck.color }}
+                  >
+                    <BookOutlined />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-white font-bold text-sm truncate">{deck.name}</h3>
+                    <p className="text-slate-500 text-xs">{deck.cardCount} từ</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  {deck.dueCount > 0 ? (
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ background: '#7C4DFF20', color: '#a78bfa', border: '1px solid #7C4DFF40' }}
+                    >
+                      {deck.dueCount} cần ôn
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-600">Không có từ cần ôn</span>
+                  )}
+                  <Button
+                    size="small"
+                    className="!font-bold !rounded-lg !text-xs"
+                    style={{ background: deck.color + '20', border: `1px solid ${deck.color}40`, color: deck.color }}
+                  >
+                    Quiz
+                  </Button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="user-glass-card p-12 text-center">
+          <BookOutlined className="text-4xl text-slate-600 mb-4" />
+          <h3 className="text-xl font-bold text-white mb-2">Chưa có bộ flashcard nào</h3>
+          <p className="text-slate-400 mb-4">Hãy xem video và lưu từ vựng để tạo bộ flashcard!</p>
+        </div>
+      )}
+
+      <div className="pointer-events-none fixed -bottom-20 -right-20 h-[500px] w-[500px] rounded-full bg-primary/5 blur-[120px]" />
+      <div className="pointer-events-none fixed -top-20 -left-20 h-[500px] w-[500px] rounded-full bg-secondary/5 blur-[120px]" />
+    </div>
+  );
+}
+
+// ─── Quiz Taking Screen ─────────────────────────────────────────────────────
+
+function QuizTakingScreen({
+  onBack,
+}: {
+  onBack: () => void;
+}) {
+  const { session, answerQuestion, nextQuestion, prevQuestion, goToQuestion } = useQuizStore();
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
+
+  // Timer
+  useEffect(() => {
+    if (!session || session.status !== 'taking') return;
+    setTimeLeft(session.timeLimit);
+
+    timerRef.current = setInterval(() => {
+      setTimeLeft((t) => {
+        if (t <= 1) {
+          timerRef.current && clearInterval(timerRef.current);
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [session?.quizId, session?.status]);
+
+  // Reset question timer when question changes
+  useEffect(() => {
+    setQuestionStartTime(Date.now());
+  }, [session?.currentIndex]);
+
+  if (!session || session.status !== 'taking') return null;
+
+  const { questions, currentIndex, answers } = session;
+  const total = questions.length;
+  const currentQ = questions[currentIndex];
+  const selectedAnswer = answers[currentQ.id] ?? null;
+  const progress = total > 0 ? Math.round(((currentIndex + 1) / total) * 100) : 0;
+
+  const fmtTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+
+  const handleSelectOption = (optId: string) => {
+    answerQuestion(currentQ.id, optId);
+  };
+
+  const handleNext = () => {
+    if (currentIndex < total - 1) nextQuestion();
+  };
+
+  const handlePrev = () => {
+    if (currentIndex > 0) prevQuestion();
+  };
+
+  const answeredCount = Object.keys(answers).length;
+  const allAnswered = answeredCount === total;
+
+  return (
+    <div className="flex flex-col h-full animate-fade-in">
+      {/* Top bar */}
+      <div className="flex items-center gap-4 px-6 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium bg-transparent border-0 cursor-pointer"
+        >
+          <ArrowLeftOutlined />
+          <span>Thoát</span>
+        </button>
+
+        <div className="flex-1" />
+
+        {/* Question navigator dots */}
+        <div className="hidden md:flex items-center gap-1.5">
+          {questions.map((q, i) => {
+            const isAnswered = !!answers[q.id];
+            const isCurrent = i === currentIndex;
+            return (
+              <button
+                key={q.id}
+                onClick={() => goToQuestion(i)}
+                className="w-7 h-7 rounded-full text-[10px] font-bold transition-all cursor-pointer"
+                style={{
+                  background: isCurrent ? '#7C4DFF' : isAnswered ? '#22c55e30' : 'rgba(255,255,255,0.05)',
+                  color: isCurrent ? 'white' : isAnswered ? '#22c55e' : '#6b7280',
+                  border: isCurrent ? '2px solid #7C4DFF' : '1px solid rgba(255,255,255,0.1)',
+                }}
+              >
+                {i + 1}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Timer */}
+        <div
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold"
+          style={{
+            background: timeLeft < 60 ? 'rgba(239,68,68,0.15)' : 'rgba(124,77,255,0.15)',
+            color: timeLeft < 60 ? '#ef4444' : '#a78bfa',
+            border: `1px solid ${timeLeft < 60 ? 'rgba(239,68,68,0.3)' : 'rgba(124,77,255,0.3)'}`,
+          }}
+        >
+          <ClockCircleOutlined />
+          {fmtTime(timeLeft)}
+        </div>
+
+        {/* Progress */}
+        <div className="text-xs text-slate-400 font-medium">
+          {currentIndex + 1} / {total}
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="px-6 pt-3">
+        <div className="w-full h-1.5 bg-slate-800/50 rounded-full overflow-hidden">
+          <motion.div
+            className="h-full rounded-full"
+            style={{ background: 'linear-gradient(90deg, #7C4DFF, #00e5ff)' }}
+            animate={{ width: `${progress}%` }}
+            transition={{ duration: 0.4 }}
+          />
+        </div>
+        <div className="flex justify-between mt-1">
+          <span className="text-[10px] text-slate-600">{answeredCount}/{total} đã trả lời</span>
+          <span className="text-[10px] text-slate-600">{progress}% hoàn thành</span>
+        </div>
+      </div>
+
+      {/* Question */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-8">
+        <div className="w-full max-w-2xl">
+          {/* Korean word */}
+          {currentQ.questionKorean && (
+            <div
+              className="text-center text-3xl font-black mb-3"
+              style={{ fontFamily: 'Noto Sans KR, sans-serif', color: '#e2e8f0' }}
+            >
+              {currentQ.questionKorean}
+            </div>
+          )}
+
+          {/* Question text */}
+          <div className="text-center text-slate-300 text-base mb-8">
+            {currentQ.question}
+          </div>
+
+          {/* Options */}
+          <div className="space-y-3">
+            {currentQ.options.map((opt, i) => {
+              const isSelected = selectedAnswer === opt.id;
+              const label = OPTION_LABELS[i] ?? String(i);
+
+              return (
+                <motion.button
+                  key={opt.id}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  onClick={() => handleSelectOption(opt.id)}
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all border"
+                  style={{
+                    background: isSelected ? 'rgba(124,77,255,0.15)' : 'rgba(255,255,255,0.03)',
+                    borderColor: isSelected ? '#7C4DFF' : 'rgba(255,255,255,0.08)',
+                  }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black shrink-0"
+                    style={{
+                      background: isSelected ? '#7C4DFF' : 'rgba(255,255,255,0.08)',
+                      color: isSelected ? 'white' : '#94a3b8',
+                    }}
+                  >
+                    {label}
+                  </div>
+                  <span className="text-white font-medium text-sm flex-1">{opt.text}</span>
+                  {isSelected && <CheckCircleOutlined style={{ color: '#7C4DFF', fontSize: 18 }} />}
+                </motion.button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <div className="px-6 pb-6 flex items-center justify-between">
+        <Button
+          onClick={handlePrev}
+          disabled={currentIndex === 0}
+          className="!rounded-xl !h-11 !px-6 !font-bold !text-sm"
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            color: currentIndex === 0 ? 'rgba(255,255,255,0.2)' : 'white',
+          }}
+        >
+          <ArrowLeftOutlined /> Câu trước
+        </Button>
+
+        <span className="text-xs text-slate-500">Câu {currentIndex + 1} / {total}</span>
+
+        {currentIndex < total - 1 ? (
+          <Button
+            onClick={handleNext}
+            disabled={!selectedAnswer}
+            className="!rounded-xl !h-11 !px-6 !font-bold !text-sm !border-0"
+            style={{
+              background: selectedAnswer ? 'linear-gradient(90deg, #7C4DFF, #00e5ff)' : 'rgba(255,255,255,0.05)',
+              color: selectedAnswer ? 'white' : 'rgba(255,255,255,0.2)',
+            }}
+          >
+            Câu tiếp <RightOutlined />
+          </Button>
+        ) : (
+          <Button
+            onClick={onBack}
+            disabled={!allAnswered}
+            className="!rounded-xl !h-11 !px-6 !font-bold !text-sm !border-0"
+            style={{
+              background: allAnswered ? 'linear-gradient(90deg, #22c55e, #16a34a)' : 'rgba(255,255,255,0.05)',
+              color: allAnswered ? 'white' : 'rgba(255,255,255,0.2)',
+            }}
+          >
+            Nộp bài <CheckCircleOutlined />
+          </Button>
+        )}
       </div>
     </div>
   );
 }
 
-function QuizDetailView({ quiz, onBack }: { quiz: Quiz; onBack: () => void }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [answered, setAnswered] = useState(false);
-  const [correctCount, setCorrectCount] = useState(0);
-  const [completed, setCompleted] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+// ─── Result Screen ───────────────────────────────────────────────────────────
 
-  const totalQuestions = quiz.questions.length;
-  const currentQ = quiz.questions[currentIndex];
-  const progressPercent = totalQuestions > 0 ? Math.round(((currentIndex + (completed ? 1 : 0)) / totalQuestions) * 100) : 0;
-  const finalScore = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+function ResultScreen({
+  onRetry,
+  onBack,
+}: {
+  onRetry: () => void;
+  onBack: () => void;
+}) {
+  const { session } = useQuizStore();
+  if (!session?.result) return null;
 
-  const handleSelect = (index: number) => {
-    if (answered) return;
-    setSelectedIndex(index);
-    setAnswered(true);
-    if (index === currentQ.correctIndex) {
-      setCorrectCount(c => c + 1);
-    }
+  const { result } = session;
+  const { feedback } = result;
+  const scorePct = result.score;
+
+  const getMessage = () => {
+    if (scorePct >= 80) return 'Xuất sắc! Bạn làm rất tốt!';
+    if (scorePct >= 50) return 'Khá tốt! Hãy tiếp tục cố gắng!';
+    return 'Cần luyện tập thêm. Đừng nản chí!';
   };
-
-  const handleNext = async () => {
-    if (currentIndex < totalQuestions - 1) {
-      setCurrentIndex(i => i + 1);
-      setSelectedIndex(null);
-      setAnswered(false);
-    } else {
-      setCompleted(true);
-      setSubmitting(true);
-      try {
-        const answers: Record<string, number> = {};
-        quiz.questions.forEach((q, i) => {
-          // Track selected answers per question
-        });
-        await quizService.submitQuiz({ videoId: quiz.videoId, answers: {}, timeTaken: 0 });
-      } catch { /* Silently fail — results shown locally */ }
-      finally { setSubmitting(false); }
-    }
-  };
-
-  const getOptionClass = (index: number) => {
-    if (!answered) return index === selectedIndex
-      ? 'border-primary bg-primary/10'
-      : 'border-white/10 bg-white/5 hover:border-white/30';
-    if (index === currentQ.correctIndex) return 'border-green-500 bg-green-500/10';
-    if (index === selectedIndex) return 'border-red-500 bg-red-500/10';
-    return 'border-white/10 bg-white/5 opacity-50';
-  };
-
-  if (completed) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] gap-6 animate-fade-in">
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-          className="w-28 h-28 rounded-full flex items-center justify-center"
-          style={{
-            backgroundColor: finalScore >= 70 ? 'rgba(34,197,94,0.15)' : 'rgba(249,115,22,0.15)',
-            border: `2px solid ${finalScore >= 70 ? '#22c55e' : '#f59e0b'}40`,
-            boxShadow: finalScore >= 70 ? '0 0 30px rgba(34,197,94,0.3)' : '0 0 30px rgba(249,115,22,0.3)',
-          }}
-        >
-          <div className="text-center">
-            <p className="text-4xl font-black" style={{ color: finalScore >= 70 ? '#22c55e' : '#f59e0b' }}>
-              {finalScore}%
-            </p>
-          </div>
-        </motion.div>
-        <div className="text-center space-y-2">
-          <h2 className="text-3xl font-extrabold text-white">
-            {finalScore >= 70 ? 'Xuất sắc!' : 'Cố gắng hơn nhé!'}
-          </h2>
-          <p className="text-slate-400">
-            Bạn trả lời đúng <span className="font-bold text-white">{correctCount}</span> /{' '}
-            <span className="font-bold text-white">{totalQuestions}</span> câu hỏi
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <Button size="large" onClick={() => { setCurrentIndex(0); setCorrectCount(0); setCompleted(false); setSelectedIndex(null); setAnswered(false); }}
-            className="!bg-white/5 !text-white !border !border-white/10 !font-bold !rounded-xl hover:!bg-white/10 transition-all">
-            Làm lại
-          </Button>
-          <Button size="large" type="primary" onClick={onBack}
-            className="!font-bold !rounded-xl">
-            Quay lại danh sách
-          </Button>
-        </div>
-        <KMateMascot message="Chúc mừng bạn! Tuyệt vời lắm!" />
-      </div>
-    );
-  }
-
-  const LABELS = ['A', 'B', 'C', 'D'];
 
   return (
-    <div className="flex flex-col gap-6 pb-8 animate-fade-in">
-      <div className="flex items-center justify-between gap-4">
-        <button onClick={onBack}
-          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium !bg-transparent border-0 cursor-pointer">
-          <RightOutlined style={{ fontSize: 14, transform: 'rotate(180deg)' }} />
-          <span>Quay lại</span>
-        </button>
-        <h2 className="text-base font-bold text-white">{quiz.title}</h2>
-        <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-full">
-          <span className="text-xs font-bold text-primary">{currentIndex + 1} / {totalQuestions}</span>
+    <div className="animate-fade-in">
+      {/* Top section */}
+      <div className="flex flex-col items-center py-10 gap-6">
+        <ScoreCircle score={scorePct} size={180} />
+
+        <div className="text-center space-y-2">
+          <h2 className="text-2xl font-extrabold text-white">{getMessage()}</h2>
+          <p className="text-slate-400">
+            Bạn trả lời đúng{' '}
+            <span className="text-green-400 font-bold">{result.correctAnswers}</span>{' '}
+            / <span className="font-bold">{result.totalQuestions}</span> câu
+          </p>
+        </div>
+
+        {/* XP earned */}
+        <div
+          className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold"
+          style={{ background: '#7C4DFF20', border: '1px solid #7C4DFF40', color: '#a78bfa' }}
+        >
+          <ThunderboltOutlined />
+          +{result.xpEarned} XP
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 mt-2">
+          <Button
+            size="large"
+            icon={<ReloadOutlined />}
+            onClick={onRetry}
+            className="!rounded-xl !h-12 !px-6 !font-bold"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white' }}
+          >
+            Làm lại
+          </Button>
+          <Button
+            size="large"
+            type="primary"
+            icon={<ArrowLeftOutlined />}
+            onClick={onBack}
+            className="!rounded-xl !h-12 !px-6 !font-bold"
+          >
+            Quay về
+          </Button>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-400">Tiến độ</span>
-          <span className="font-bold text-white">{progressPercent}%</span>
-        </div>
-        <div className="w-full h-3 bg-slate-800/50 rounded-full overflow-hidden border border-primary/5 p-0.5">
-          <div className="h-full rounded-full transition-all duration-500 relative"
-            style={{ width: `${progressPercent}%`, background: 'linear-gradient(90deg, #7C4DFF, #00e5ff)', boxShadow: '0 0 10px rgba(0,229,255,0.5)' }}>
-            <div className="absolute top-0 right-0 h-full w-4 bg-white/20 blur-sm rounded-r-full" />
+      {/* Feedback section */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-2">
+        {feedback.strengths.length > 0 && (
+          <div className="rounded-2xl p-4" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
+            <h3 className="text-green-400 font-bold text-sm mb-2 flex items-center gap-1.5">
+              <CheckCircleOutlined /> Điểm mạnh
+            </h3>
+            <ul className="space-y-1">
+              {feedback.strengths.map((s, i) => (
+                <li key={i} className="text-slate-300 text-xs">• {s}</li>
+              ))}
+            </ul>
           </div>
-        </div>
-      </div>
-
-      {/* Question card */}
-      <div className="rounded-3xl p-10 flex flex-col items-center text-center shadow-2xl relative overflow-hidden"
-        style={{ background: 'rgba(23,50,54,0.3)', backdropFilter: 'blur(12px)', border: '1px solid rgba(0,229,255,0.2)' }}>
-        <p className="text-sm font-medium text-slate-400 mb-4">{currentQ.question}</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full mt-4">
-          {currentQ.options.map((option, index) => (
-            <button
-              key={index}
-              onClick={() => handleSelect(index)}
-              disabled={answered}
-              className={`flex items-center gap-4 p-5 rounded-2xl transition-all text-left border ${getOptionClass(index)}`}
-            >
-              <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0
-                ${answered && index === currentQ.correctIndex ? 'bg-green-500 text-white' :
-                  answered && index === selectedIndex ? 'bg-red-500 text-white' :
-                  'bg-slate-700 text-slate-300'}`}>
-                {LABELS[index]}
-              </span>
-              <span className="text-base font-semibold text-white">{option}</span>
-              {answered && index === currentQ.correctIndex && (
-                <CheckCircleOutlined className="ml-auto text-green-500" />
-              )}
-              {answered && index === selectedIndex && index !== currentQ.correctIndex && (
-                <CloseCircleOutlined className="ml-auto text-red-500" />
-              )}
-            </button>
-          ))}
-        </div>
-        {answered && currentQ.explanation && (
-          <div className="mt-4 p-4 rounded-xl bg-white/5 border border-white/10 text-sm text-slate-300 text-left w-full">
-            <span className="text-primary font-bold">Giải thích: </span>{currentQ.explanation}
+        )}
+        {feedback.weaknesses.length > 0 && (
+          <div className="rounded-2xl p-4" style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)' }}>
+            <h3 className="text-amber-400 font-bold text-sm mb-2 flex items-center gap-1.5">
+              <CloseCircleOutlined /> Cần cải thiện
+            </h3>
+            <ul className="space-y-1">
+              {feedback.weaknesses.map((w, i) => (
+                <li key={i} className="text-slate-300 text-xs">• {w}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {feedback.recommendations.length > 0 && (
+          <div className="rounded-2xl p-4" style={{ background: 'rgba(124,77,255,0.08)', border: '1px solid rgba(124,77,255,0.2)' }}>
+            <h3 className="text-primary-400 font-bold text-sm mb-2 flex items-center gap-1.5">
+              <QuestionOutlined /> Gợi ý
+            </h3>
+            <ul className="space-y-1">
+              {feedback.recommendations.map((r, i) => (
+                <li key={i} className="text-slate-300 text-xs">• {r}</li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
 
-      <div className="flex justify-end">
-        <button
-          onClick={handleNext}
-          disabled={!answered}
-          className="flex items-center gap-3 px-8 py-4 rounded-2xl font-bold tracking-wide transition-all"
-          style={{
-            background: answered ? 'linear-gradient(90deg, #7C4DFF, #00e5ff)' : 'rgba(255,255,255,0.05)',
-            color: answered ? 'white' : 'rgba(255,255,255,0.3)',
-            cursor: answered ? 'pointer' : 'not-allowed',
-            boxShadow: answered ? '0 0 20px rgba(124,77,255,0.3)' : 'none',
-          }}
-        >
-          {currentIndex < totalQuestions - 1 ? 'Câu hỏi tiếp theo' : 'Hoàn thành'}
-          <RightOutlined style={{ fontSize: 14 }} />
-        </button>
-      </div>
+      {/* Answer review */}
+      {result.review && result.review.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-white font-bold text-base mb-3">Xem lại câu trả lời</h3>
+          <div className="space-y-3">
+            {result.review.map((item, i) => (
+              <div
+                key={item.questionId}
+                className="rounded-2xl p-4"
+                style={{
+                  background: 'rgba(21,28,42,0.8)',
+                  border: `1px solid ${item.isCorrect ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                }}
+              >
+                <div className="flex items-start gap-3 mb-2">
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shrink-0 mt-0.5"
+                    style={{ background: item.isCorrect ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)', color: item.isCorrect ? '#22c55e' : '#ef4444' }}
+                  >
+                    {i + 1}
+                  </div>
+                  <div>
+                    {item.questionKorean && (
+                      <p className="text-white font-bold text-base" style={{ fontFamily: 'Noto Sans KR, sans-serif' }}>
+                        {item.questionKorean}
+                      </p>
+                    )}
+                    <p className="text-slate-400 text-xs">{item.question}</p>
+                  </div>
+                  {item.isCorrect ? (
+                    <CheckCircleOutlined className="text-green-400 text-lg ml-auto shrink-0" />
+                  ) : (
+                    <CloseCircleOutlined className="text-red-400 text-lg ml-auto shrink-0" />
+                  )}
+                </div>
 
-      <KMateMascot />
+                {/* Your answer */}
+                {item.yourAnswer && (
+                  <div className="ml-10 mb-1.5">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider">Bạn chọn: </span>
+                    <span
+                      className="text-sm font-medium"
+                      style={{ color: item.isCorrect ? '#22c55e' : '#ef4444' }}
+                    >
+                      {item.options.find(o => o.id === item.yourAnswer)?.text ?? item.yourAnswer}
+                    </span>
+                  </div>
+                )}
+
+                {/* Correct answer */}
+                {!item.isCorrect && item.correctAnswer && (
+                  <div className="ml-10">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider">Đáp án đúng: </span>
+                    <span className="text-sm font-medium text-green-400">
+                      {item.options.find(o => o.id === item.correctAnswer)?.text ?? item.correctAnswer}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-export default function UserQuizPage() {
-  const [quizList, setQuizList] = useState<QuizCard[]>([]);
-  const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
-  const [loading, setLoading] = useState(true);
+// ─── Main Page ──────────────────────────────────────────────────────────────
 
+export default function UserQuizPage() {
+  const router = useRouter();
+  const { session, startQuiz, setResult, setError, reset } = useQuizStore();
+
+  const [screen, setScreen] = useState<Screen>('home');
+  const [decks, setDecks] = useState<DeckInfo[]>([]);
+  const [stats, setStats] = useState<UserStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Load decks and stats on mount
   useEffect(() => {
-    quizService.getHistory({ limit: 20 })
-      .then((r) => {
-        const items = (r.data.data as unknown[]).map((item: unknown, i: number) => {
-          const q = item as { videoId: string; score?: number; quiz?: { title: string; totalQuestions: number } };
-          return {
-            id: q.videoId,
-            title: (q as { quiz?: { title: string } }).quiz?.title ?? 'Quiz Video',
-            category: 'Mixed' as QuizCategory,
-            level: '—',
-            levelColor: COLORS[i % COLORS.length],
-            totalQuestions: (q as { quiz?: { totalQuestions: number } }).quiz?.totalQuestions ?? 5,
-            score: q.score ?? null,
-            status: q.score !== undefined ? 'completed' as QuizStatus : 'not-started' as QuizStatus,
-            progress: q.score ?? 0,
-            color: COLORS[i % COLORS.length],
-            questions: [],
-          };
-        });
-        setQuizList(items);
-      })
-      .catch(() => {
-        // If no history, show empty state
-        setQuizList([]);
-      })
-      .finally(() => setLoading(false));
+    const load = async () => {
+      try {
+        const [decksRes, statsRes] = await Promise.allSettled([
+          flashcardService.getDecks(),
+          quizService.getStats(),
+        ]);
+
+        if (decksRes.status === 'fulfilled') {
+          const raw = decksRes.value.data.data ?? [];
+          setDecks(
+            raw.map((d: any, i: number) => ({
+              id: d.id,
+              name: d.name,
+              cardCount: d.cardCount ?? 0,
+              dueCount: d.dueCount ?? 0,
+              color: d.color ?? DECK_COLORS[i % DECK_COLORS.length],
+              icon: d.icon ?? 'book',
+            })),
+          );
+        }
+
+        if (statsRes.status === 'fulfilled') {
+          setStats(statsRes.value.data.data ?? null);
+        }
+      } catch {
+        // non-fatal
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
   }, []);
 
-  const handleSelectQuiz = (card: QuizCard) => {
-    setActiveQuiz(null);
-    quizService.getQuiz(card.id)
-      .then((r) => setActiveQuiz(r.data.data))
-      .catch(() => {
-        // Fallback: create a placeholder quiz from the card data
-        setActiveQuiz({
-          id: card.id,
-          videoId: card.id,
-          title: card.title,
-          questions: [],
-          totalQuestions: card.totalQuestions,
-          timeLimit: 300,
-          difficulty: 'mixed',
-          isCompleted: card.status === 'completed',
-          score: card.score ?? undefined,
-        });
+  // Start a quiz
+  const handleStartQuiz = useCallback(async (mode: 'deck' | 'random' | 'ai', deckId?: string) => {
+    setLoading(true);
+    setError(undefined);
+    try {
+      const res = await quizService.createQuiz({
+        deckId: mode === 'deck' ? deckId : undefined,
+        mode,
+        count: 20,
       });
-  };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Spin size="large" />
-      </div>
-    );
-  }
+      const data = res.data.data;
+      const deckInfo = mode === 'deck' && deckId ? decks.find(d => d.id === deckId) : undefined;
+
+      startQuiz({
+        quizId: data.quizId,
+        deckId: deckInfo?.id,
+        deckName: deckInfo?.name,
+        mode,
+        questions: data.questions,
+        currentIndex: 0,
+        timeLimit: data.timeLimit,
+        expiresAt: data.expiresAt,
+        startedAt: Date.now(),
+      });
+
+      setScreen('quiz');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? err?.message ?? 'Không thể tạo quiz';
+      message.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [decks, startQuiz, setError]);
+
+  // Submit quiz
+  const handleSubmitQuiz = useCallback(async () => {
+    if (!session) return;
+    setSubmitting(true);
+
+    try {
+      const answers = Object.entries(session.answers).map(([questionId, answer]) => ({
+        questionId,
+        answer,
+        timeSpent: 0,
+      }));
+
+      const res = await quizService.submitQuiz({
+        quizId: session.quizId,
+        answers,
+      });
+
+      setResult(res.data.data);
+      setScreen('result');
+
+      // Reload stats
+      try {
+        const statsRes = await quizService.getStats();
+        setStats(statsRes.value.data.data ?? null);
+      } catch { /* non-fatal */ }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? err?.message ?? 'Lỗi khi nộp bài';
+      message.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [session, setResult]);
+
+  // Retry
+  const handleRetry = useCallback(async () => {
+    if (!session) return;
+    setSubmitting(true);
+    try {
+      const res = await quizService.retryQuiz(session.quizId, { count: session.questions.length });
+      const data = res.data.data;
+
+      startQuiz({
+        quizId: data.quizId,
+        deckId: session.deckId,
+        deckName: session.deckName,
+        mode: session.mode,
+        questions: data.questions,
+        currentIndex: 0,
+        timeLimit: data.timeLimit,
+        expiresAt: data.expiresAt,
+        startedAt: Date.now(),
+      });
+
+      setScreen('quiz');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? err?.message ?? 'Lỗi khi làm lại';
+      message.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [session, startQuiz]);
+
+  // Back to home
+  const handleBack = useCallback(() => {
+    if (session && Object.keys(session.answers).length > 0 && screen === 'quiz') {
+      handleSubmitQuiz();
+    } else {
+      reset();
+      setScreen('home');
+    }
+  }, [session, screen, handleSubmitQuiz, reset]);
+
+  const handleExitQuiz = useCallback(() => {
+    if (session && Object.keys(session.answers).length > 0) {
+      handleSubmitQuiz();
+    } else {
+      reset();
+      setScreen('home');
+    }
+  }, [session, handleSubmitQuiz, reset]);
+
+  // ── Render ──
+  const isQuizActive = screen === 'quiz' || screen === 'result';
 
   return (
-    <div className="p-6 lg:p-10 min-h-full bg-gradient-cyber">
-      {activeQuiz ? (
-        <QuizDetailView quiz={activeQuiz} onBack={() => setActiveQuiz(null)} />
-      ) : (
-        <div className="space-y-8 animate-fade-in">
-          <div>
-            <h1 className="text-3xl lg:text-4xl font-extrabold text-white">
-              Luyện tập{' '}
-              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Quiz</span>
-            </h1>
-            <p className="text-slate-400 text-sm mt-1 flex items-center gap-2">
-              <QuestionOutlined className="text-primary" />
-              Kiểm tra kiến thức từ các video bạn đã học.
-            </p>
+    <div
+      className="min-h-full"
+      style={{
+        background: isQuizActive ? '#0B0B0F' : undefined,
+        backgroundImage: isQuizActive ? undefined : 'radial-gradient(circle at 0% 0%, rgba(124,77,255,0.1) 0%, transparent 50%), radial-gradient(circle at 100% 100%, rgba(0,229,255,0.08) 0%, transparent 50%)',
+      }}
+    >
+      {/* Quiz layout — full height when taking */}
+      {isQuizActive ? (
+        <div className="min-h-screen flex flex-col max-w-3xl mx-auto">
+          {/* Header when in quiz */}
+          <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="flex items-center gap-3">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-lg"
+                style={{ background: 'rgba(124,77,255,0.15)', color: '#a78bfa' }}
+              >
+                <QuestionOutlined />
+              </div>
+              <div>
+                <h2 className="text-white font-bold text-sm">
+                  {session?.deckName ? `Quiz: ${session.deckName}` : 'Quiz'}
+                </h2>
+                <p className="text-slate-500 text-[10px]">
+                  {session?.mode === 'random' ? 'Quiz ngẫu nhiên' : session?.mode === 'ai' ? 'Quiz thông minh (AI)' : 'Quiz theo bộ thẻ'}
+                </p>
+              </div>
+            </div>
+            {submitting && (
+              <div className="flex items-center gap-2 text-slate-400 text-xs">
+                <Spin size="small" />
+                <span>Đang nộp bài...</span>
+              </div>
+            )}
           </div>
 
-          <StatsBar quizzes={quizList} />
-
-          {quizList.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {quizList.map((quiz, i) => (
-                <QuizCard key={quiz.id} quiz={quiz} onStart={() => handleSelectQuiz(quiz)} />
-              ))}
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-6 py-6">
+              {screen === 'result' ? (
+                <ResultScreen onRetry={handleRetry} onBack={() => { reset(); setScreen('home'); }} />
+              ) : (
+                <QuizTakingScreen onBack={handleExitQuiz} />
+              )}
             </div>
-          ) : (
-            <div className="user-glass-card p-12 text-center">
-              <QuestionOutlined className="text-4xl text-slate-600 mb-4" />
-              <h3 className="text-xl font-bold text-white mb-2">Chưa có quiz nào</h3>
-              <p className="text-slate-400 mb-4">Hãy xem video và hoàn thành để nhận quiz kiểm tra!</p>
-              <Button type="primary" className="!font-bold !rounded-xl"
-                onClick={() => { window.location.href = '/user/explore'; }}>
-                Khám phá video ngay
-              </Button>
-            </div>
-          )}
-
-          <div className="pointer-events-none fixed -bottom-20 -right-20 h-[500px] w-[500px] rounded-full bg-primary/5 blur-[120px]" />
-          <div className="pointer-events-none fixed -top-20 -left-20 h-[500px] w-[500px] rounded-full bg-secondary/5 blur-[120px]" />
+          </div>
+        </div>
+      ) : (
+        /* Normal layout */
+        <div className="p-6 lg:p-10 min-h-full">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key="home"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <QuizHomeScreen
+                decks={decks}
+                stats={stats}
+                loading={loading}
+                onStartQuiz={handleStartQuiz}
+              />
+            </motion.div>
+          </AnimatePresence>
         </div>
       )}
     </div>

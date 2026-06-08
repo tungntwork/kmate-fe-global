@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button, Input, Checkbox, message } from 'antd';
 import { MailOutlined, LockOutlined, UserOutlined, EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons';
 import { motion } from 'framer-motion';
@@ -11,6 +12,7 @@ import { authService } from '@/lib/api-services';
 import { useAuthStore } from '@/store/auth.store';
 
 export function RegisterPage() {
+  const router = useRouter();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -53,7 +55,7 @@ export function RegisterPage() {
       setTokens(accessToken, refreshToken);
       setUser(user);
       message.success('Đăng ký thành công! Đang chuyển hướng...');
-      setTimeout(() => { window.location.href = '/user/dashboard'; }, 500);
+      setTimeout(() => { router.push('/user/dashboard'); }, 500);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: { message?: string } } };
       setError(error.response?.data?.error?.message || 'Đăng ký thất bại. Vui lòng thử lại.');

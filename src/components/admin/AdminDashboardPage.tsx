@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   UserOutlined,
   VideoCameraOutlined,
@@ -155,6 +156,7 @@ const commonAxis = {
 };
 
 export default function AdminDashboardPage() {
+  const router = useRouter();
   const [data, setData] = useState<AdminDashboard | null>(null);
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -163,7 +165,7 @@ export default function AdminDashboardPage() {
     const token = localStorage.getItem('accessToken');
     if (!token) {
       message.error('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
-      setTimeout(() => { window.location.href = '/login'; }, 1500);
+      setTimeout(() => { router.push('/login'); }, 1500);
       return;
     }
 

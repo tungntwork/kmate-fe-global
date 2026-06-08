@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, memo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Slider, Tooltip } from 'antd';
 import {
   PlayCircleOutlined,
@@ -33,40 +34,37 @@ const SPEED_LABELS: Record<PlaybackSpeed, string> = {
   2: '2x',
 };
 
-export function PlayerControls({ onOpenSettings }: PlayerControlsProps) {
+export const PlayerControls = memo(function PlayerControls({ onOpenSettings }: PlayerControlsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const {
-    isPlaying,
-    currentTime,
-    duration,
-    settings,
-    controlsVisible,
-    isFullscreen,
-    play,
-    pause,
-    togglePlay,
-    setVolume,
-    toggleMute,
-    setSpeed,
-    toggleSubtitle,
-    setSubtitlePosition,
-    showControls,
-    setIsFullscreen,
-  } = usePlayerStore();
+
+  // Split selectors: values that change frequently → useShallow (only re-renders when value changes)
+  const { isPlaying, currentTime, duration, isFullscreen, controlsVisible } = usePlayerStore(
+    useShallow((s) => ({
+      isPlaying: s.isPlaying,
+      currentTime: s.currentTime,
+      duration: s.duration,
+      isFullscreen: s.isFullscreen,
+      controlsVisible: s.controlsVisible,
+    }))
+  );
+
+  // Settings change rarely — stable selector (no useShallow needed)
+  const { settings, play, pause, togglePlay, setVolume, toggleMute, setSpeed, toggleSubtitle, toggleFullscreen, setSubtitlePosition, showControls, setIsFullscreen } = usePlayerStore((s) => ({
+    settings: s.settings,
+    play: s.play,
+    pause: s.pause,
+    togglePlay: s.togglePlay,
+    setVolume: s.setVolume,
+    toggleMute: s.toggleMute,
+    setSpeed: s.setSpeed,
+    toggleSubtitle: s.toggleSubtitle,
+    toggleFullscreen: s.toggleFullscreen,
+    setSubtitlePosition: s.setSubtitlePosition,
+    showControls: s.showControls,
+    setIsFullscreen: s.setIsFullscreen,
+  }));
 
   const { formatTime } = useSubtitleSync();
-
-  const toggleFullscreen = useCallback(() => {
-    if (!containerRef.current) return;
-
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    } else {
-      containerRef.current.closest('.player-container')?.requestFullscreen();
-      setIsFullscreen(true);
-    }
-  }, [setIsFullscreen]);
 
   const handleSpeedChange = useCallback((speed: number) => {
     setSpeed(speed as PlaybackSpeed);
@@ -79,8 +77,6 @@ export function PlayerControls({ onOpenSettings }: PlayerControlsProps) {
   const toggleSubtitlePosition = useCallback(() => {
     setSubtitlePosition(settings.subtitlePosition === 'bottom' ? 'top' : 'bottom');
   }, [settings.subtitlePosition, setSubtitlePosition]);
-
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <AnimatePresence>
@@ -97,14 +93,6 @@ export function PlayerControls({ onOpenSettings }: PlayerControlsProps) {
         >
           {/* Gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none" />
-
-          {/* Mini progress bar at very top of controls */}
-          <div className="h-1 bg-white/20 w-full">
-            <div
-              className="h-full bg-primary-500 transition-all duration-100"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
 
           {/* Main controls */}
           <div className="relative p-4 space-y-2">
@@ -257,4 +245,4 @@ export function PlayerControls({ onOpenSettings }: PlayerControlsProps) {
       )}
     </AnimatePresence>
   );
-}
+});

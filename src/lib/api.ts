@@ -8,6 +8,10 @@ export const apiClient = axios.create({
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
+    // Prevent browser/cdn caching of API responses (especially polling endpoints)
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
   },
 });
 

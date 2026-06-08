@@ -32,6 +32,18 @@ function formatViewCount(count: number): string {
   return `${count} lượt xem`;
 }
 
+function extractYouTubeId(input: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
+    /^[a-zA-Z0-9_-]{11}$/,
+  ];
+  for (const p of patterns) {
+    const m = input.trim().match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 const LEVEL_MAP: Record<string, string> = {
   beginner: 'Sơ cấp',
   intermediate: 'Trung cấp',
@@ -104,6 +116,15 @@ export default function UserExplorePage() {
   const handleSearch = (q: string) => {
     setSearchQuery(q);
     if (!q.trim()) return;
+
+    // If input is a YouTube URL or bare ID, navigate directly to player
+    const ytId = extractYouTubeId(q);
+    if (ytId) {
+      router.push(`/learn/${ytId}`);
+      return;
+    }
+
+    // Otherwise do normal text search
     setLoadingSearch(true);
     const key = message.loading({ content: 'Dang tim kiem...', duration: 0, key: 'search-load' });
     videoService.discoverSearch({ q, limit: 8 })
@@ -129,14 +150,15 @@ export default function UserExplorePage() {
       <main className="pb-12 px-6 lg:px-10">
         {/* Search Bar */}
         <section className="mb-8 pt-4 max-w-2xl">
-          <Input
+          <Input.Search
             size="large"
             prefix={<SearchOutlined className="text-slate-400" />}
-            placeholder="Tìm kiếm video học tiếng Hàn... (VD: korean grammar, k-pop lyrics)"
+            placeholder="Tìm kiếm hoặc dán link YouTube... (VD: https://youtube.com/watch?v=...)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onPressEnter={() => handleSearch(searchQuery)}
-            className="!bg-white/5 !border !border-white/10 !text-white !rounded-2xl !py-3 !px-4 placeholder:!text-slate-500"
+            onSearch={(value) => handleSearch(value)}
+            enterButton={<SearchOutlined className="!text-background-dark" />}
+            className="[&_.ant-input-group-addon]:!bg-primary [&_.ant-input-group-addon]:!border-primary [&_.ant-input-group-addon]:!rounded-2xl [&_.ant-input]:!bg-white/5 [&_.ant-input]:!border-white/10 [&_.ant-input]:!text-white [&_.ant-input]:!rounded-2xl [&_.ant-input]:!py-3 [&_.ant-input]:!px-4 [&_.ant-input::placeholder]:!text-slate-500 [&_.ant-input-group]:!rounded-2xl"
           />
         </section>
 

@@ -16,7 +16,6 @@ export function useSubtitleSync(options: UseSubtitleSyncOptions = {}) {
     segments,
     currentSegment,
     currentSegmentIndex,
-    updateCurrentSegment,
     getSegmentAtTime,
     getSegmentIndex,
     getUpcomingSegments,
@@ -27,8 +26,8 @@ export function useSubtitleSync(options: UseSubtitleSyncOptions = {}) {
     hasError,
   } = useSubtitleStore();
 
-  const { currentTime, settings } = usePlayerStore();
-  
+  const { currentTime, playerRef, settings } = usePlayerStore();
+
   const lastUpdateRef = useRef<number>(0);
   const segmentCacheRef = useRef<Map<number, SubtitleSegment>>(new Map());
 
@@ -83,23 +82,30 @@ export function useSubtitleSync(options: UseSubtitleSyncOptions = {}) {
     return { segment: result, index: resultIndex };
   }, [segments]);
 
-  // Update current segment based on playback time (debounced to avoid excessive updates)
+  // Throttle: only update store at most every 250ms to avoid cascading re-renders.
+  // Reads real-time from player ref to stay accurate, not just the store (which is 100ms behind).
   useEffect(() => {
+    if (!segments.length) return;
+
+    const player = playerRef as { getCurrentTime?: () => number } | null;
+    const realTime = player?.getCurrentTime?.() ?? currentTime;
     const now = Date.now();
-    
-    // Only update if enough time has passed (reduces CPU usage)
-    if (now - lastUpdateRef.current < 50) {
-      return;
-    }
-    
+
+    if (now - lastUpdateRef.current < 250) return;
     lastUpdateRef.current = now;
-    
-    const { segment, index } = binarySearchSegment(currentTime);
-    
+
+    const { segment, index } = binarySearchSegment(realTime);
+
     if (segment !== currentSegment || index !== currentSegmentIndex) {
-      updateCurrentSegment(currentTime);
+      const { currentSegment: cur, currentSegmentIndex: idx } = useSubtitleStore.getState();
+      if (segment !== cur || index !== idx) {
+        useSubtitleStore.setState({
+          currentSegment: segment,
+          currentSegmentIndex: index,
+        });
+      }
     }
-  }, [currentTime, binarySearchSegment, updateCurrentSegment, currentSegment, currentSegmentIndex]);
+  }, [currentTime, binarySearchSegment, currentSegment, currentSegmentIndex, segments, playerRef]);
 
   // Preload surrounding segments for smooth transitions
   const preloadSegments = useCallback(() => {

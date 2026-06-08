@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button, Input, Checkbox, message } from 'antd';
 import { MailOutlined, LockOutlined, EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,6 +12,7 @@ import { authService } from '@/lib/api-services';
 import { useAuthStore } from '@/store/auth.store';
 
 export function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -39,7 +41,7 @@ export function LoginPage() {
       const dashboardPath = (user.role === 'ADMIN' || user.role === 'MODERATOR')
         ? '/admin/dashboard'
         : '/user/dashboard';
-      setTimeout(() => { window.location.href = dashboardPath; }, 500);
+      setTimeout(() => { router.push(dashboardPath); }, 500);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: { message?: string } } } };
       setError(error.response?.data?.error?.message || 'Email hoặc mật khẩu không đúng.');
