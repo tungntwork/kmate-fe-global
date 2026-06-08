@@ -221,7 +221,7 @@ export function SubtitleGenerationModal({
     const wsProgress = progressPercent ?? 0;
     const pollingProgress = jobStatus?.progress ?? 0;
     const displayPercent = wsProgress > 0 ? wsProgress : pollingProgress;
-    const displayStage = jobStatus?.stage ?? stageLabel ?? (s === 'queued' ? 'Job queued...' : 'Processing...');
+    const displayStage = jobStatus?.stage ?? stageLabel ?? (s === 'idle' ? 'Waiting for job...' : 'Processing...');
     const stageText = SUBTITLE_STAGE_LABELS[displayStage] ?? displayStage;
 
     return (

@@ -128,7 +128,7 @@ function WaitingPageContent() {
     if (!isCompleted || !videoId) return;
     if (vocabJobId || vocabCompleted) return; // already triggered or done
 
-    api.post('/vocabulary/extract', { videoId, mode: 'topic' })
+    api.post<{ data: { jobId: string } }>('/vocabulary/extract', { videoId, mode: 'topic' })
       .then((res) => {
         setVocabJobId(res.data.data.jobId);
       })

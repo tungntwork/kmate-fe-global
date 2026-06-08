@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-interface Flashcard {
+export interface Flashcard {
   id: string;
   word: string;
   reading: string | null;
@@ -10,51 +10,42 @@ interface Flashcard {
   nextReview: Date;
 }
 
+export interface FlashcardSessionState {
+  sessionId: string | null;
+  deckId: string | null;
+  cardIds: string[];
+  currentIndex: number;
+  answeredIds: string[];
+}
+
 interface FlashcardState {
-  dueCards: Flashcard[];
-  currentReviewIndex: number;
-  isReviewing: boolean;
+  // Persisted progress state
+  session: FlashcardSessionState | null;
 
   // Actions
-  setDueCards: (cards: Flashcard[]) => void;
-  nextCard: () => void;
-  startReview: () => void;
-  endReview: () => void;
-  updateCardMastery: (cardId: string, mastery: Flashcard['masteryLevel']) => void;
+  setSession: (session: FlashcardSessionState | null) => void;
+  updateProgress: (currentIndex: number, answeredIds: string[]) => void;
+  clearSession: () => void;
 }
 
 export const useFlashcardStore = create<FlashcardState>()(
   persist(
-    (set, get) => ({
-      dueCards: [],
-      currentReviewIndex: 0,
-      isReviewing: false,
+    (set) => ({
+      session: null,
 
-      setDueCards: (dueCards) => set({ dueCards, currentReviewIndex: 0 }),
+      setSession: (session) => set({ session }),
 
-      nextCard: () => {
-        const { currentReviewIndex, dueCards } = get();
-        if (currentReviewIndex < dueCards.length - 1) {
-          set({ currentReviewIndex: currentReviewIndex + 1 });
-        } else {
-          set({ isReviewing: false, currentReviewIndex: 0 });
-        }
-      },
-
-      startReview: () => set({ isReviewing: true, currentReviewIndex: 0 }),
-
-      endReview: () => set({ isReviewing: false, currentReviewIndex: 0 }),
-
-      updateCardMastery: (cardId, mastery) =>
+      updateProgress: (currentIndex, answeredIds) =>
         set((state) => ({
-          dueCards: state.dueCards.filter((c) => c.id !== cardId),
+          session: state.session
+            ? { ...state.session, currentIndex, answeredIds }
+            : null,
         })),
+
+      clearSession: () => set({ session: null }),
     }),
     {
       name: 'kmate-flashcard',
-      partialize: (state) => ({
-        dueCards: state.dueCards,
-      }),
     }
   )
 );

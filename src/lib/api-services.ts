@@ -636,6 +636,19 @@ export const flashcardService = {
 
   getStats: () =>
     api.get<{ data: FlashcardStats }>('/flashcards/stats'),
+
+  // ── Session progress ─────────────────────────────────────────────
+  startSession: (data: { deckId?: string; cardIds: string[] }) =>
+    api.post<{ data: { id: string; deckId: string | null; cardIds: string[]; currentIndex: number; status: string } }>('/flashcards/session/start', data),
+
+  getSession: () =>
+    api.get<{ data: { id: string; deckId: string | null; cardIds: string[]; currentIndex: number; answeredIds: string[]; status: string } | null }>('/flashcards/session'),
+
+  updateSessionProgress: (data: { sessionId: string; currentIndex: number; answeredIds: string[] }) =>
+    api.patch<{ data: { id: string; currentIndex: number; answeredIds: string[] } }>('/flashcards/session/progress', data),
+
+  completeSession: (data: { sessionId: string }) =>
+    api.post<{ data: { id: string; status: string } }>('/flashcards/session/complete', data),
 };
 
 // ============================================================
@@ -739,6 +752,24 @@ export const quizService = {
   // Retry a quiz
   retryQuiz: (quizId: string, data?: { count?: number }) =>
     api.post<{ data: QuizDeck }>(`/quiz/${quizId}/retry`, data ?? {}),
+
+  // ── Progress tracking ─────────────────────────────────────────────
+  resumeQuiz: (quizId: string) =>
+    api.post<{ data: {
+      quizId: string;
+      currentQuestion: number;
+      answersJson: Record<string, string>;
+      questions: QuizQuestion[];
+      expiresAt: string;
+      startedAt: string;
+      timeLimit: number;
+    } }>(`/quiz/${quizId}/resume`),
+
+  saveProgress: (quizId: string, data: { currentQuestion: number; answersJson: Record<string, string> }) =>
+    api.patch<{ data: { saved: boolean; currentQuestion: number } }>(`/quiz/${quizId}/progress`, data),
+
+  pauseQuiz: (quizId: string, data: { currentQuestion: number; answersJson: Record<string, string> }) =>
+    api.patch<{ data: { paused: boolean } }>(`/quiz/${quizId}/pause`, data),
 };
 
 // ============================================================

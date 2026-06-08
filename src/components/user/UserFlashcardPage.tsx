@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Button, Spin } from 'antd';
+import { Button, Spin, Modal, message } from 'antd';
 import {
   ArrowLeftOutlined,
   FireOutlined,
@@ -11,6 +11,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 import { flashcardService, type Flashcard, type FlashcardDeck, type FlashcardStats } from '@/lib/api-services';
+import { useFlashcardStore } from '@/store/flashcard.store';
 
 type Rating = 'again' | 'hard' | 'good' | 'easy';
 type RatingQuality = 0 | 1 | 2 | 3 | 4 | 5;
@@ -84,7 +85,7 @@ function FlashcardDisplay({ card, isRevealed, onReveal }: { card: Flashcard; isR
         />
         <span className="text-6xl font-bold text-white relative z-10 text-center leading-none"
           style={{ textShadow: '0 0 20px rgba(124,77,255,0.4)' }}>
-          {card.word}
+          {card.front}
         </span>
         {card.pronunciation && (
           <span className="text-lg text-slate-300 relative z-10 font-mono tracking-wide">
@@ -95,9 +96,9 @@ function FlashcardDisplay({ card, isRevealed, onReveal }: { card: Flashcard; isR
           <div className="mt-4 pt-4 border-t border-white/10 flex flex-col items-center gap-1"
             style={{ borderColor: 'rgba(124, 77, 255, 0.2)' }}>
             <span className="text-xs font-bold text-primary uppercase tracking-wider">Nghĩa</span>
-            <span className="text-xl font-semibold text-white text-center">{card.meaning}</span>
-            {card.exampleSentence && (
-              <span className="text-sm text-slate-400 text-center mt-1 italic">{card.exampleSentence}</span>
+            <span className="text-xl font-semibold text-white text-center">{card.back}</span>
+            {card.example && (
+              <span className="text-sm text-slate-400 text-center mt-1 italic">{card.example}</span>
             )}
           </div>
         </div>
@@ -167,34 +168,95 @@ function DeckCard({ deck, onStart }: { deck: FlashcardDeck; onStart: () => void 
   );
 }
 
-function ReviewMode({ cards, deckName, streak, onBack }: { cards: Flashcard[]; deckName: string; streak: number; onBack: () => void }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+interface ReviewModeProps {
+  cards: Flashcard[];
+  deckId: string | null;
+  deckName: string;
+  streak: number;
+  initialIndex?: number;
+  initialAnsweredIds?: string[];
+  onBack: () => void;
+}
+
+function ReviewMode({ cards, deckId, deckName, streak, initialIndex = 0, initialAnsweredIds = [], onBack }: ReviewModeProps) {
+  const { session, setSession, updateProgress } = useFlashcardStore();
+
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isRevealed, setIsRevealed] = useState(false);
   const [completed, setCompleted] = useState(false);
-  const [sessionProgress, setSessionProgress] = useState(0);
   const [mascotMsg, setMascotMsg] = useState<string>();
 
   const totalCards = cards.length;
   const currentCard = cards[currentIndex];
   const progressPercent = totalCards > 0 ? Math.round(((currentIndex + (completed ? 1 : 0)) / totalCards) * 100) : 0;
 
+  const answeredIdsRef = useRef<string[]>(initialAnsweredIds);
+  const sessionIdRef = useRef<string | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync store session ID
+  useEffect(() => {
+    if (session?.sessionId) {
+      sessionIdRef.current = session.sessionId;
+    }
+  }, [session]);
+
+  const saveProgress = useCallback(async (idx: number, answered: string[]) => {
+    if (!sessionIdRef.current) return;
+    updateProgress(idx, answered);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        await flashcardService.updateSessionProgress({
+          sessionId: sessionIdRef.current!,
+          currentIndex: idx,
+          answeredIds: answered,
+        });
+      } catch {
+        // Non-fatal — local state already updated via store
+      }
+    }, 500);
+  }, [updateProgress]);
+
   const handleRating = async (rating: Rating) => {
+    if (!currentCard) return;
     const quality = RATING_CONFIG[rating].quality;
+
+    // Call review API
     try {
       await flashcardService.review({ flashcardId: currentCard.id, quality });
     } catch {
       // Continue even if API call fails
     }
+
     setMascotMsg(rating === 'again' ? 'Đừng nản! Thử lại nhé!' : 'Tuyệt vời! Học tiếp nào!');
     setIsRevealed(false);
 
+    const newAnsweredIds = [...answeredIdsRef.current, currentCard.id];
+    answeredIdsRef.current = newAnsweredIds;
+
     if (currentIndex < totalCards - 1) {
-      setCurrentIndex((i) => i + 1);
-      setSessionProgress(Math.round(((currentIndex + 1) / totalCards) * 100));
+      const nextIdx = currentIndex + 1;
+      setCurrentIndex(nextIdx);
+      saveProgress(nextIdx, newAnsweredIds);
     } else {
+      // Completed all cards
+      if (sessionIdRef.current) {
+        try {
+          await flashcardService.completeSession({ sessionId: sessionIdRef.current });
+          setSession(null);
+        } catch { /* non-fatal */ }
+      }
       setCompleted(true);
     }
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
 
   if (completed) {
     return (
@@ -208,7 +270,12 @@ function ReviewMode({ cards, deckName, streak, onBack }: { cards: Flashcard[]; d
           <p className="text-slate-400">Bạn đã ôn xong {totalCards} thẻ.</p>
         </div>
         <div className="flex gap-3">
-          <Button size="large" onClick={() => { setCurrentIndex(0); setCompleted(false); setIsRevealed(false); setSessionProgress(0); }}
+          <Button size="large" onClick={() => {
+            setCurrentIndex(0);
+            setCompleted(false);
+            setIsRevealed(false);
+            answeredIdsRef.current = [];
+          }}
             icon={<ReloadOutlined />}
             className="!bg-white/5 !text-white !border !border-white/10 !font-bold !rounded-xl hover:!bg-white/10 transition-all">
             Ôn lại
@@ -344,12 +411,14 @@ function VideoDeckCard({ deck, onStart }: {
   );
 }
 
-function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck }: {
+function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, hasInProgressSession, onResume }: {
   defaultDecks: FlashcardDeck[];
   videoDecks: (FlashcardDeck & { youtubeId?: string; videoTitle?: string })[];
   stats: FlashcardStats | null;
   loading: boolean;
   onSelectDeck: (deck: FlashcardDeck) => void;
+  hasInProgressSession: boolean;
+  onResume: () => void;
 }) {
   if (loading) {
     return (
@@ -375,6 +444,24 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck }
           Chọn bộ thẻ phù hợp với trình độ của bạn để bắt đầu ôn tập từ vựng.
         </p>
       </div>
+
+      {/* In-progress session banner */}
+      {hasInProgressSession && (
+        <div className="user-glass-card p-4 flex items-center justify-between gap-4 border border-primary/30">
+          <div>
+            <p className="text-white font-bold text-sm">Bạn có phiên ôn tập đang dở</p>
+            <p className="text-slate-400 text-xs">Tiếp tục từ vị trí trước đó?</p>
+          </div>
+          <Button
+            type="primary"
+            size="small"
+            className="!font-bold !rounded-xl !bg-primary/20 !text-primary !border-primary/30"
+            onClick={onResume}
+          >
+            Tiếp tục ôn
+          </Button>
+        </div>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-4">
@@ -420,7 +507,7 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck }
           </div>
           <div className="space-y-3">
             {videoDecks.map((deck) => (
-              <VideoDeckCard key={deck.id} deck={deck} onStart={() => onSelectDeck(deck)} />
+              <VideoDeckCard key={deck.id} deck={deck} onStart={() => onSelectDeck(deck as FlashcardDeck)} />
             ))}
           </div>
         </div>
@@ -446,22 +533,44 @@ export default function UserFlashcardPage() {
   const [stats, setStats] = useState<FlashcardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeCards, setActiveCards] = useState<Flashcard[] | null>(null);
-  const [activeDeckName, setActiveDeckName] = useState('');
+  const [activeDeck, setActiveDeck] = useState<FlashcardDeck | null>(null);
+  const [activeSession, setActiveSession] = useState<{
+    sessionId: string;
+    cardIds: string[];
+    currentIndex: number;
+    answeredIds: string[];
+  } | null>(null);
   const [streak, setStreak] = useState(0);
+  const [resumeModalVisible, setResumeModalVisible] = useState(false);
 
+  const { session, setSession, clearSession } = useFlashcardStore();
+
+  // Load initial data + check for existing session
   useEffect(() => {
     Promise.all([
       flashcardService.getDecks().catch(() => null),
       flashcardService.getDue().catch(() => null),
       flashcardService.getStats().catch(() => null),
-    ]).then(([decksRes, dueRes, statsRes]) => {
+      flashcardService.getSession().catch(() => null),
+    ]).then(([decksRes, dueRes, statsRes, sessionRes]) => {
       if (decksRes) setDecks(decksRes.data.data);
       if (dueRes) setDueCards(dueRes.data.data);
       if (statsRes) {
         setStats(statsRes.data.data);
         setStreak(statsRes.data.data.streak);
       }
+      if (sessionRes?.data?.data) {
+        const s = sessionRes.data.data;
+        setActiveSession({
+          sessionId: s.id,
+          cardIds: s.cardIds as string[],
+          currentIndex: s.currentIndex,
+          answeredIds: s.answeredIds as string[],
+        });
+        setResumeModalVisible(true);
+      }
     }).finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Split decks into default (pre-seeded) and video-linked
@@ -470,25 +579,131 @@ export default function UserFlashcardPage() {
     .filter((d) => (d as any).isDefault !== true)
     .map((d) => d as FlashcardDeck & { youtubeId?: string; videoTitle?: string });
 
-  const handleSelectDeck = (deck: FlashcardDeck) => {
-    setActiveDeckName(deck.name);
+  const handleSelectDeck = async (deck: FlashcardDeck) => {
+    setActiveDeck(deck);
+    let cardsToStudy: Flashcard[] = dueCards;
+
     if (deck.dueCount > 0) {
-      flashcardService.getFlashcards({ deckId: deck.id, limit: deck.dueCount })
-        .then((r) => setActiveCards(r.data.data))
-        .catch(() => setActiveCards(dueCards));
-    } else {
-      setActiveCards(dueCards);
+      try {
+        const res = await flashcardService.getFlashcards({ deckId: deck.id, limit: deck.dueCount });
+        cardsToStudy = res.data.data;
+      } catch {
+        cardsToStudy = dueCards;
+      }
+    }
+
+    // Start a new session via API
+    const cardIds = cardsToStudy.map((c) => c.id);
+    try {
+      const sessionRes = await flashcardService.startSession({ deckId: deck.id, cardIds });
+      const sessionData = sessionRes.data.data;
+      setSession({
+        sessionId: sessionData.id,
+        deckId: deck.id,
+        cardIds,
+        currentIndex: 0,
+        answeredIds: [],
+      });
+      setActiveSession({
+        sessionId: sessionData.id,
+        cardIds,
+        currentIndex: 0,
+        answeredIds: [],
+      });
+      setActiveCards(cardsToStudy);
+    } catch {
+      // Fallback: start without session persistence
+      setActiveCards(cardsToStudy);
     }
   };
 
+  const handleResumeSession = async () => {
+    if (!activeSession) return;
+    setResumeModalVisible(false);
+
+    // Find the deck matching this session
+    const matchedDeck = decks.find((d) => d.id === (activeSession as { deckId?: string }).deckId) ?? null;
+    setActiveDeck(matchedDeck);
+
+    // Load cards for this session
+    const cardIds = activeSession.cardIds;
+    try {
+      const allCardsRes = await flashcardService.getFlashcards({ limit: 500 });
+      const allCards = allCardsRes.data.data;
+      const sessionCards = allCards.filter((c) => cardIds.includes(c.id));
+      setActiveSession({
+        ...activeSession,
+        cardIds: sessionCards.map((c) => c.id),
+      });
+      setActiveCards(sessionCards);
+      setSession({
+        sessionId: activeSession.sessionId,
+        deckId: (activeSession as { deckId?: string }).deckId ?? null,
+        cardIds: activeSession.cardIds,
+        currentIndex: activeSession.currentIndex,
+        answeredIds: activeSession.answeredIds,
+      });
+    } catch {
+      message.error('Không thể tải lại phiên ôn tập');
+    }
+  };
+
+  const handleDismissResume = () => {
+    setResumeModalVisible(false);
+    // Mark session as abandoned
+    if (activeSession) {
+      flashcardService.completeSession({ sessionId: activeSession.sessionId }).catch(() => {});
+      setActiveSession(null);
+    }
+  };
+
+  const handleBackToDeckList = () => {
+    setActiveCards(null);
+    setActiveDeck(null);
+    setActiveSession(null);
+    clearSession();
+  };
+
+  const activeDeckName = activeDeck?.name ?? '';
+  const resumeData = activeSession && activeCards
+    ? {
+        initialIndex: activeSession.currentIndex,
+        initialAnsweredIds: activeSession.answeredIds,
+      }
+    : {};
+
   return (
     <div className="p-6 lg:p-10 min-h-full bg-gradient-cyber">
-      {activeCards !== null ? (
+      {/* Resume session modal */}
+      <Modal
+        title="Tiếp tục phiên ôn tập?"
+        open={resumeModalVisible}
+        onCancel={handleDismissResume}
+        footer={[
+          <Button key="new" onClick={handleDismissResume}>
+            Bắt đầu mới
+          </Button>,
+          <Button key="resume" type="primary" onClick={handleResumeSession} className="!font-bold !rounded-xl">
+            Tiếp tục ôn
+          </Button>,
+        ]}
+        className="kmate-modal"
+      >
+        <p className="text-slate-300">
+          Bạn có một phiên ôn tập đang dở ({activeSession?.answeredIds.length ?? 0} thẻ đã ôn).
+          Bạn có muốn tiếp tục không?
+        </p>
+      </Modal>
+
+      {activeCards !== null && activeCards.length > 0 ? (
         <ReviewMode
           cards={activeCards}
+          deckId={activeDeck?.id ?? null}
           deckName={activeDeckName}
           streak={streak}
-          onBack={() => setActiveCards(null)}
+          initialIndex={resumeData.initialIndex ?? 0}
+          initialAnsweredIds={resumeData.initialAnsweredIds ?? []}
+          onBack={handleBackToDeckList}
         />
       ) : (
         <DeckListView
@@ -497,6 +712,8 @@ export default function UserFlashcardPage() {
           stats={stats}
           loading={loading}
           onSelectDeck={handleSelectDeck}
+          hasInProgressSession={!!activeSession}
+          onResume={handleResumeSession}
         />
       )}
     </div>

@@ -298,7 +298,7 @@ export default function AdminUserDetailPage() {
                     min={1}
                     className="!w-full !bg-white/5 !border-white/10 !text-white"
                     formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                    parser={(value) => Number(String(value).replace(/,/g, '')) as unknown as undefined}
+                    parser={(value) => Number(String(value).replace(/,/g, '')) as any}
                   />
                 </Form.Item>
               )}
@@ -314,7 +314,7 @@ export default function AdminUserDetailPage() {
                 min={1}
                 className="!w-full !bg-white/5 !border-white/10 !text-white"
                 formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                parser={(value) => Number(String(value).replace(/,/g, '')) as unknown as undefined}
+                parser={(value) => Number(String(value).replace(/,/g, '')) as any}
               />
             </Form.Item>
           )}

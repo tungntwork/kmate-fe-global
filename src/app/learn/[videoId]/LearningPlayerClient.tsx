@@ -369,7 +369,7 @@ export default function LearningPlayerPage() {
         setVocabWords([]);
       } else {
         setVocabWords([]);
-        message.warn('Không thể tải từ vựng. Bạn có thể bấm "Trích xuất" để tạo.');
+        message.warning('Không thể tải từ vựng. Bạn có thể bấm "Trích xuất" để tạo.');
       }
     }
   }, [videoId]);
@@ -579,7 +579,7 @@ export default function LearningPlayerPage() {
 
         <div className="flex items-center gap-2">
           {/* Subtitle generation status */}
-          {subtitleSocket.progress && subtitleSocket.progress.videoId === videoId && (
+          {subtitleSocket.progress && (
             <Tooltip title={`${subtitleSocket.stageLabel} (${subtitleSocket.progressPercent}%)`}>
               <div className="flex items-center gap-1 px-2">
                 <Spin size="small" />

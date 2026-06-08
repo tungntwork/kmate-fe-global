@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button, Spin, message } from 'antd';
+import { Button, Spin, message, Modal } from 'antd';
 import {
   QuestionOutlined,
   CheckCircleOutlined,
@@ -17,7 +16,7 @@ import {
   FireOutlined,
 } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
-import { quizService, flashcardService } from '@/lib/api-services';
+import { quizService, flashcardService, type QuizDeck, type QuizQuestion } from '@/lib/api-services';
 import { useQuizStore } from '@/store/quiz.store';
 
 type Screen = 'home' | 'quiz' | 'result';
@@ -702,16 +701,20 @@ function ResultScreen({
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function UserQuizPage() {
-  const router = useRouter();
-  const { session, startQuiz, setResult, setError, reset } = useQuizStore();
+  const { session, startQuiz, resumeFromServer, setResult, setError, reset } = useQuizStore();
 
   const [screen, setScreen] = useState<Screen>('home');
   const [decks, setDecks] = useState<DeckInfo[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [resumeModalVisible, setResumeModalVisible] = useState(false);
+  const [resumeModalQuizId, setResumeModalQuizId] = useState<string | null>(null);
+  const [inProgressCount, setInProgressCount] = useState(0);
 
-  // Load decks and stats on mount
+  const saveProgressDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load decks, stats, and check for persisted session on mount
   useEffect(() => {
     const load = async () => {
       try {
@@ -744,12 +747,24 @@ export default function UserQuizPage() {
       }
     };
     load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Check persisted session from localStorage (via Zustand persist)
+  useEffect(() => {
+    const stored = session;
+    if (stored && stored.status === 'taking' && screen === 'home') {
+      setResumeModalQuizId(stored.quizId);
+      setInProgressCount(Object.keys(stored.answers).length);
+      setResumeModalVisible(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Start a quiz
   const handleStartQuiz = useCallback(async (mode: 'deck' | 'random' | 'ai', deckId?: string) => {
     setLoading(true);
-    setError(undefined);
+    setError('');
     try {
       const res = await quizService.createQuiz({
         deckId: mode === 'deck' ? deckId : undefined,
@@ -757,19 +772,21 @@ export default function UserQuizPage() {
         count: 20,
       });
 
-      const data = res.data.data;
+      const data = res.data.data as QuizDeck & { timeLimit?: number; expiresAt?: string; questions?: QuizQuestion[] };
       const deckInfo = mode === 'deck' && deckId ? decks.find(d => d.id === deckId) : undefined;
 
       startQuiz({
-        quizId: data.quizId,
+        quizId: data.id,
         deckId: deckInfo?.id,
         deckName: deckInfo?.name,
         mode,
-        questions: data.questions,
+        questions: data.questions ?? [],
         currentIndex: 0,
-        timeLimit: data.timeLimit,
-        expiresAt: data.expiresAt,
+        timeLimit: data.timeLimit ?? 300,
+        expiresAt: data.expiresAt ?? new Date(Date.now() + 3600000).toISOString(),
         startedAt: Date.now(),
+        answers: {} as Record<string, string>,
+        questionTimes: {} as Record<string, number>,
       });
 
       setScreen('quiz');
@@ -780,6 +797,32 @@ export default function UserQuizPage() {
       setLoading(false);
     }
   }, [decks, startQuiz, setError]);
+
+  // Save progress to backend (debounced)
+  const saveProgressToBackend = useCallback(async () => {
+    if (!session || session.status !== 'taking') return;
+    try {
+      await quizService.saveProgress(session.quizId, {
+        currentQuestion: session.currentIndex,
+        answersJson: session.answers,
+      });
+    } catch {
+      // Non-fatal
+    }
+  }, [session]);
+
+  // Debounced save on answer
+  useEffect(() => {
+    if (screen !== 'quiz' || !session) return;
+    if (saveProgressDebounceRef.current) clearTimeout(saveProgressDebounceRef.current);
+    saveProgressDebounceRef.current = setTimeout(() => {
+      saveProgressToBackend();
+    }, 2000);
+    return () => {
+      if (saveProgressDebounceRef.current) clearTimeout(saveProgressDebounceRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.answers, session?.currentIndex, screen]);
 
   // Submit quiz
   const handleSubmitQuiz = useCallback(async () => {
@@ -800,11 +843,12 @@ export default function UserQuizPage() {
 
       setResult(res.data.data);
       setScreen('result');
+      reset();
 
       // Reload stats
       try {
         const statsRes = await quizService.getStats();
-        setStats(statsRes.value.data.data ?? null);
+        setStats(statsRes.data.data ?? null);
       } catch { /* non-fatal */ }
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Lỗi khi nộp bài';
@@ -812,7 +856,7 @@ export default function UserQuizPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [session, setResult]);
+  }, [session, setResult, reset]);
 
   // Retry
   const handleRetry = useCallback(async () => {
@@ -820,18 +864,20 @@ export default function UserQuizPage() {
     setSubmitting(true);
     try {
       const res = await quizService.retryQuiz(session.quizId, { count: session.questions.length });
-      const data = res.data.data;
+      const data = res.data.data as QuizDeck & { questions?: QuizQuestion[]; timeLimit?: number; expiresAt?: string };
 
       startQuiz({
-        quizId: data.quizId,
+        quizId: data.id,
         deckId: session.deckId,
         deckName: session.deckName,
         mode: session.mode,
-        questions: data.questions,
+        questions: data.questions ?? session.questions,
         currentIndex: 0,
-        timeLimit: data.timeLimit,
-        expiresAt: data.expiresAt,
+        timeLimit: data.timeLimit ?? session.timeLimit,
+        expiresAt: data.expiresAt ?? session.expiresAt,
         startedAt: Date.now(),
+        answers: {},
+        questionTimes: {},
       });
 
       setScreen('quiz');
@@ -843,24 +889,59 @@ export default function UserQuizPage() {
     }
   }, [session, startQuiz]);
 
-  // Back to home
-  const handleBack = useCallback(() => {
-    if (session && Object.keys(session.answers).length > 0 && screen === 'quiz') {
-      handleSubmitQuiz();
-    } else {
-      reset();
-      setScreen('home');
-    }
-  }, [session, screen, handleSubmitQuiz, reset]);
+  // Resume quiz from backend
+  const handleResumeQuiz = useCallback(async () => {
+    if (!resumeModalQuizId) return;
+    setResumeModalVisible(false);
+    setLoading(true);
+    try {
+      const res = await quizService.resumeQuiz(resumeModalQuizId);
+      const data = res.data.data;
+      const matchedDeck = decks.find(d => d.id === (data as unknown as { deckId?: string }).deckId);
 
-  const handleExitQuiz = useCallback(() => {
-    if (session && Object.keys(session.answers).length > 0) {
-      handleSubmitQuiz();
-    } else {
+      resumeFromServer(data, matchedDeck?.name);
+      setScreen('quiz');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? err?.message ?? 'Không thể khôi phục quiz';
+      message.error(msg);
       reset();
-      setScreen('home');
+    } finally {
+      setLoading(false);
+      setResumeModalQuizId(null);
     }
-  }, [session, handleSubmitQuiz, reset]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeModalQuizId, decks]);
+
+  const handleDismissResume = useCallback(() => {
+    setResumeModalVisible(false);
+    reset();
+    setResumeModalQuizId(null);
+  }, [reset]);
+
+  // Exit quiz — save progress, go back to home
+  const handleExitQuiz = useCallback(async () => {
+    if (session && session.status === 'taking') {
+      setSubmitting(true);
+      try {
+        await quizService.pauseQuiz(session.quizId, {
+          currentQuestion: session.currentIndex,
+          answersJson: session.answers,
+        });
+        message.success('Tiến trình đã được lưu!');
+      } catch {
+        // proceed even if save fails
+      }
+      setSubmitting(false);
+    }
+    reset();
+    setScreen('home');
+  }, [session, reset]);
+
+  // Back button in quiz header — same as exit
+  const handleBack = useCallback(() => {
+    handleExitQuiz();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleExitQuiz]);
 
   // ── Render ──
   const isQuizActive = screen === 'quiz' || screen === 'result';
@@ -873,6 +954,27 @@ export default function UserQuizPage() {
         backgroundImage: isQuizActive ? undefined : 'radial-gradient(circle at 0% 0%, rgba(124,77,255,0.1) 0%, transparent 50%), radial-gradient(circle at 100% 100%, rgba(0,229,255,0.08) 0%, transparent 50%)',
       }}
     >
+      {/* Resume modal */}
+      <Modal
+        title="Tiếp tục quiz đang dở?"
+        open={resumeModalVisible}
+        onCancel={handleDismissResume}
+        footer={[
+          <Button key="new" onClick={handleDismissResume}>
+            Bắt đầu mới
+          </Button>,
+          <Button key="resume" type="primary" onClick={handleResumeQuiz} className="!font-bold !rounded-xl">
+            Tiếp tục
+          </Button>,
+        ]}
+        className="kmate-modal"
+      >
+        <p className="text-slate-300">
+          Bạn có một quiz đang dở ({inProgressCount} câu đã trả lời).
+          Bạn có muốn tiếp tục không?
+        </p>
+      </Modal>
+
       {/* Quiz layout — full height when taking */}
       {isQuizActive ? (
         <div className="min-h-screen flex flex-col max-w-3xl mx-auto">
@@ -897,7 +999,7 @@ export default function UserQuizPage() {
             {submitting && (
               <div className="flex items-center gap-2 text-slate-400 text-xs">
                 <Spin size="small" />
-                <span>Đang nộp bài...</span>
+                <span>Đang lưu...</span>
               </div>
             )}
           </div>

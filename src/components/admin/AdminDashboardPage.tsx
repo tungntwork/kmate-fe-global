@@ -72,11 +72,12 @@ function RevenueTooltip({ active, payload, label }: {
   );
 }
 
-function PaymentTooltip({ active, payload, label }: {
+function PaymentTooltip({ active, payload, label, analytics }: {
   active?: boolean;
   payload?: Array<{ value: number; color: string }>;
   label?: string;
-}, analytics: AdminAnalytics | null) {
+  analytics: AdminAnalytics | null;
+}) {
   if (!active || !payload?.length) return null;
   const entry = payload[0];
   const amt = (analytics?.paymentBreakdown ?? []).find((p) => p.status === label)?.totalAmount ?? 0;
@@ -105,6 +106,21 @@ function PieTooltip({ active, payload }: {
     <div className="bg-[#0f1623] border border-white/15 rounded-xl px-4 py-3 shadow-2xl">
       <p className="text-white text-sm font-bold">{d.name}</p>
       <p className="text-slate-400 text-xs mt-1">{d.value.toLocaleString('vi-VN')} người ({(d.payload.percent * 100).toFixed(1)}%)</p>
+    </div>
+  );
+}
+
+function AITooltip({ active, payload, label }: {
+  active?: unknown;
+  payload?: unknown;
+  label?: unknown;
+}) {
+  const p = payload as Array<{ value: number }> | undefined;
+  if (!active || !p?.length) return null;
+  return (
+    <div className="bg-[#0f1623] border border-white/15 rounded-xl px-4 py-3 shadow-2xl">
+      <p className="text-white text-xs font-bold mb-1">{label as string}</p>
+      <p className="text-slate-300 text-xs">{p[0].value} jobs (7 ngày)</p>
     </div>
   );
 }
@@ -150,10 +166,10 @@ function ChartCard({ title, subtitle, children }: {
 const commonGrid = { strokeDasharray: '3 3', stroke: 'rgba(255,255,255,0.04)' };
 const commonAxis = {
   stroke: 'rgba(255,255,255,0)' as const,
-  tick: { fill: C.slate, fontSize: 11 } as React.CSSProperties,
+  tick: { fill: C.slate, fontSize: 11 } as any,
   axisLine: false,
   tickLine: false,
-};
+} as any;
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -356,15 +372,7 @@ export default function AdminDashboardPage() {
               <CartesianGrid {...commonGrid} vertical={false} />
               <XAxis dataKey="name" {...commonAxis} angle={-20} textAnchor="end" interval={0} />
               <YAxis {...commonAxis} />
-              <Tooltip content={({ active, payload: p, label: l }: { active?: boolean; payload?: Array<{ value: number }>; label?: string }) => {
-                if (!active || !p?.length) return null;
-                return (
-                  <div className="bg-[#0f1623] border border-white/15 rounded-xl px-4 py-3 shadow-2xl">
-                    <p className="text-white text-xs font-bold mb-1">{l}</p>
-                    <p className="text-slate-300 text-xs">{p[0].value} jobs (7 ngày)</p>
-                  </div>
-                );
-              }} />
+              <Tooltip content={<AITooltip />} />
               <Bar dataKey="count" radius={[3, 3, 0, 0]}>
                 {aiJobChart.map((_, i) => (
                   <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />

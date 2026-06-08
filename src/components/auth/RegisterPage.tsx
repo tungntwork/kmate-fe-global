@@ -57,7 +57,7 @@ export function RegisterPage() {
       message.success('Đăng ký thành công! Đang chuyển hướng...');
       setTimeout(() => { router.push('/user/dashboard'); }, 500);
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: { message?: string } } };
+      const error = err as { response?: { data?: { error?: { message?: string } } } };
       setError(error.response?.data?.error?.message || 'Đăng ký thất bại. Vui lòng thử lại.');
     } finally {
       setLoading(false);

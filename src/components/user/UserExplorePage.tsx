@@ -64,7 +64,8 @@ export default function UserExplorePage() {
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [totalVideosWatched, setTotalVideosWatched] = useState(0);
   const [totalMinutes, setTotalMinutes] = useState(0);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const toastTimerRef = useRef<any>(null);
 
   const loadTrending = useCallback(() => {
     setLoadingTrending(true);
@@ -105,7 +106,7 @@ export default function UserExplorePage() {
       .finally(() => {
         setLoadingSearch(false);
         // Ensure toast is dismissed when component unmounts
-        toastTimerRef.current = window.setTimeout(() => message.destroy('explore-load'), 100);
+        toastTimerRef.current = window.setTimeout(() => message.destroy('explore-load'), 100) as unknown as ReturnType<typeof window.setTimeout>;
       });
     return () => {
       message.destroy('explore-load');
