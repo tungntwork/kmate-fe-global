@@ -178,35 +178,70 @@ interface ClickableTextProps {
 
 export function ClickableSubtitleText({ text, onWordClick, style }: ClickableTextProps) {
   const { pauseByHover, resumeFromHover } = usePlayerStore();
+  const { getItemByWord } = useVocabulary();
+
+  // Build a stable tooltip overlay ref so multiple words don't fight z-index
+  const [hoveredWord, setHoveredWord] = useState<{
+    word: string;
+    meaning: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const hideTooltipTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (!onWordClick) {
     return <span style={style}>{text}</span>;
   }
 
-  // Split Korean text into words (simple tokenizer)
   const words = text.split(/(\s+)/);
+
+  const handleMouseEnter = useCallback(
+    (word: string, e: React.MouseEvent<HTMLSpanElement>) => {
+      pauseByHover();
+      if (hideTooltipTimeout.current) clearTimeout(hideTooltipTimeout.current);
+      const trimmed = word.trim();
+      const saved = getItemByWord(trimmed);
+      if (saved) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        setHoveredWord({
+          word: trimmed,
+          meaning: saved.meaning,
+          x: rect.left + rect.width / 2,
+          y: rect.top - 8,
+        });
+      }
+    },
+    [pauseByHover, getItemByWord],
+  );
+
+  const handleMouseLeave = useCallback(() => {
+    resumeFromHover();
+    hideTooltipTimeout.current = setTimeout(() => {
+      setHoveredWord(null);
+    }, 150);
+  }, [resumeFromHover]);
 
   return (
     <>
       {words.map((word, index) => {
-        // Check if it's a Korean word (has Korean characters)
         const isKorean = /[\uAC00-\uD7AF]/.test(word);
-
         if (!isKorean || word.trim() === '') {
           return <span key={index}>{word}</span>;
         }
+        const trimmed = word.trim();
 
         return (
           <span
             key={index}
             className="cursor-pointer hover:text-primary-300 transition-colors"
             style={style}
-            onMouseEnter={() => pauseByHover()}
-            onMouseLeave={() => resumeFromHover()}
+            onMouseEnter={(e) => handleMouseEnter(word, e)}
+            onMouseLeave={handleMouseLeave}
             onClick={(e) => {
-              pauseByHover(); // ensure video is paused on click
+              pauseByHover();
               const rect = e.currentTarget.getBoundingClientRect();
-              onWordClick(word.trim(), {
+              onWordClick(trimmed, {
                 x: rect.left + rect.width / 2,
                 y: rect.top - 12 - window.innerHeight * 0.36,
               });
@@ -216,6 +251,42 @@ export function ClickableSubtitleText({ text, onWordClick, style }: ClickableTex
           </span>
         );
       })}
+
+      {/* Hover tooltip — rendered via portal so z-index is reliable */}
+      {hoveredWord && typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed bg-[#1e293b] border border-primary/40 rounded-xl px-3 py-2 shadow-xl pointer-events-none"
+            style={{
+              left: hoveredWord.x,
+              top: hoveredWord.y,
+              transform: 'translate(-50%, -100%)',
+              zIndex: 99998,
+              maxWidth: 260,
+            }}
+          >
+            <p
+              className="text-sm font-bold text-white"
+              style={{ fontFamily: 'Noto Sans KR, sans-serif' }}
+            >
+              {hoveredWord.word}
+            </p>
+            <p className="text-xs text-yellow-300 mt-0.5">{hoveredWord.meaning}</p>
+            {/* Tiny arrow */}
+            <div
+              className="absolute left-1/2 -translate-x-1/2"
+              style={{
+                bottom: '-6px',
+                width: 0,
+                height: 0,
+                borderLeft: '6px solid transparent',
+                borderRight: '6px solid transparent',
+                borderTop: '6px solid #1e293b',
+              }}
+            />
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
