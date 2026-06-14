@@ -608,6 +608,7 @@ export function LandingPage() {
                   width={120}
                   height={30}
                   className="h-7 md:h-9 w-auto object-contain"
+                  style={{ width: 'auto' }}
                 />
               </Link>
 
@@ -655,7 +656,7 @@ export function LandingPage() {
         <Drawer
           title={
             <div className="flex items-center gap-2">
-              <Image src={imgKMATELOGO} alt="K-MATE" width={100} height={24} className="h-6 w-auto object-contain" />
+              <Image src={imgKMATELOGO} alt="K-MATE" width={100} height={24} className="h-6 w-auto object-contain" style={{ width: 'auto' }} />
             </div>
           }
           placement="right"

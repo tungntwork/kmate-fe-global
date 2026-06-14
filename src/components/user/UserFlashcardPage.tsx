@@ -9,9 +9,14 @@ import {
   SoundOutlined,
   CheckCircleOutlined,
   ReloadOutlined,
+  LeftOutlined,
+  RightOutlined,
 } from '@ant-design/icons';
+import { motion, AnimatePresence } from 'framer-motion';
 import { flashcardService, type Flashcard, type FlashcardDeck, type FlashcardStats } from '@/lib/api-services';
 import { useFlashcardStore } from '@/store/flashcard.store';
+import { CreateFromVideoView } from './CreateFromVideoView';
+import { DueCardsView } from './DueCardsView';
 
 type Rating = 'again' | 'hard' | 'good' | 'easy';
 type RatingQuality = 0 | 1 | 2 | 3 | 4 | 5;
@@ -32,8 +37,8 @@ const KMATE_MASCOT_MESSAGES = [
   'Chính xác! Hãy giữ nhịp đều nhé!',
 ];
 
-function KMateMascot({ message }: { message?: string }) {
-  const displayMessage = message ?? KMATE_MASCOT_MESSAGES[Math.floor(Math.random() * KMATE_MASCOT_MESSAGES.length)];
+function KMateMascot({ messageApi }: { messageApi?: string }) {
+  const displayMessage = messageApi ?? KMATE_MASCOT_MESSAGES[Math.floor(Math.random() * KMATE_MASCOT_MESSAGES.length)];
   return (
     <div className="fixed bottom-8 right-8 z-40 flex flex-col items-end gap-2 animate-fade-in">
       <div className="relative bg-white/10 backdrop-blur-md border border-primary/30 rounded-2xl px-4 py-3 max-w-[220px] shadow-lg">
@@ -73,45 +78,97 @@ function RatingButton({ rating, onClick }: { rating: Rating; onClick: () => void
   );
 }
 
-function FlashcardDisplay({ card, isRevealed, onReveal }: { card: Flashcard; isRevealed: boolean; onReveal: () => void }) {
+function FlashcardDisplay({ card, isRevealed, onReveal, deckColor }: { card: Flashcard; isRevealed: boolean; onReveal: () => void; deckColor?: string }) {
+  const speak = (text: string) => {
+    if (!text) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ko-KR';
+    utterance.rate = 0.8;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const color = deckColor || '#7C4DFF';
+
   return (
     <div className="w-full flex flex-col items-center gap-4">
       <div
-        className="relative w-full max-w-lg user-glass-card p-10 flex flex-col items-center gap-3 select-none"
-        style={{ borderColor: 'rgba(124, 77, 255, 0.3)', minHeight: 240 }}
+        className="relative w-full max-w-lg select-none cursor-pointer"
+        style={{ perspective: 1200 }}
+        onClick={onReveal}
       >
-        <div className="absolute inset-0 opacity-20 rounded-2xl pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse at center, rgba(124,77,255,0.3) 0%, transparent 70%)' }}
-        />
-        <span className="text-6xl font-bold text-white relative z-10 text-center leading-none"
-          style={{ textShadow: '0 0 20px rgba(124,77,255,0.4)' }}>
-          {card.front}
-        </span>
-        {card.pronunciation && (
-          <span className="text-lg text-slate-300 relative z-10 font-mono tracking-wide">
-            /{card.pronunciation}/
+        <motion.div
+          className="relative w-full user-glass-card p-10 flex flex-col items-center gap-3"
+          style={{
+            borderColor: color + '50',
+            minHeight: 240,
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+          }}
+          animate={{ rotateY: isRevealed ? 180 : 0 }}
+          transition={{ duration: 0.5, ease: 'easeInOut' }}
+        >
+          <div
+            className="absolute inset-0 opacity-20 rounded-2xl pointer-events-none"
+            style={{ background: `radial-gradient(ellipse at center, ${color}40 0%, transparent 70%)` }}
+          />
+
+          {/* Front face */}
+          <span
+            className="text-6xl font-bold text-white relative z-10 text-center leading-none"
+            style={{ textShadow: `0 0 20px ${color}60` }}
+          >
+            {card.front}
           </span>
-        )}
-        <div className={`w-full mt-2 overflow-hidden transition-all duration-500 ease-in-out ${isRevealed ? 'max-h-32 opacity-100' : 'max-h-0 opacity-0'}`}>
-          <div className="mt-4 pt-4 border-t border-white/10 flex flex-col items-center gap-1"
-            style={{ borderColor: 'rgba(124, 77, 255, 0.2)' }}>
-            <span className="text-xs font-bold text-primary uppercase tracking-wider">Nghĩa</span>
-            <span className="text-xl font-semibold text-white text-center">{card.back}</span>
-            {card.example && (
-              <span className="text-sm text-slate-400 text-center mt-1 italic">{card.example}</span>
-            )}
-          </div>
-        </div>
+          {card.pronunciation && (
+            <span className="text-lg text-slate-300 relative z-10 font-mono tracking-wide">
+              /{card.pronunciation}/
+            </span>
+          )}
+          <span className="text-xs text-slate-500 mt-1 relative z-10">Bấm để lật thẻ</span>
+        </motion.div>
+
+        {/* Back face */}
+        <motion.div
+          className="absolute inset-0 w-full user-glass-card p-10 flex flex-col items-center gap-3"
+          style={{
+            borderColor: color + '50',
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+            rotateY: 180,
+          }}
+          animate={{ rotateY: isRevealed ? 0 : -180 }}
+          transition={{ duration: 0.5, ease: 'easeInOut' }}
+        >
+          <div
+            className="absolute inset-0 opacity-20 rounded-2xl pointer-events-none"
+            style={{ background: `radial-gradient(ellipse at center, ${color}40 0%, transparent 70%)` }}
+          />
+          <span
+            className="text-xs font-bold uppercase tracking-wider relative z-10"
+            style={{ color }}
+          >
+            Nghĩa
+          </span>
+          <span className="text-xl font-semibold text-white text-center relative z-10">
+            {card.back}
+          </span>
+          {card.example && (
+            <span className="text-sm text-slate-400 text-center mt-1 italic relative z-10">
+              {card.example}
+            </span>
+          )}
+        </motion.div>
       </div>
-      {!isRevealed && (
-        <Button type="primary" size="large" onClick={onReveal}
-          className="!bg-primary/20 !text-primary !border !border-primary/30 !font-bold !rounded-2xl !px-8 hover:!bg-primary/30 hover:!scale-105 active:!scale-95 transition-all">
-          XEM NGHĨA
-        </Button>
-      )}
-      <Button type="text" icon={<SoundOutlined className="text-slate-400 text-lg" />}
-        className="!text-slate-400 hover:!text-white transition-colors !p-2 !rounded-full hover:!bg-white/5"
-        title="Phát âm" />
+
+      {/* Nút phat am */}
+      <Button
+        type="text"
+        icon={<SoundOutlined className="text-slate-400 text-2xl" />}
+        onClick={(e) => { e.stopPropagation(); speak(card.front); }}
+        className="!text-slate-400 hover:!text-white transition-colors !p-3 !rounded-full hover:!bg-white/5"
+        title="Phat am"
+      />
     </div>
   );
 }
@@ -139,7 +196,9 @@ function DeckCard({ deck, onStart }: { deck: FlashcardDeck; onStart: () => void 
             {deck.name}
           </span>
         </div>
-        <span className="text-xs text-slate-400">{deck.cardCount} thẻ</span>
+        <span className="text-xs text-slate-400">
+          <span className="font-bold text-white">{deck.cardCount}</span> thẻ
+        </span>
       </div>
       {deck.description && (
         <p className="text-sm text-slate-400 leading-relaxed">{deck.description}</p>
@@ -168,61 +227,174 @@ function DeckCard({ deck, onStart }: { deck: FlashcardDeck; onStart: () => void 
   );
 }
 
+// ── Save-progress modal ────────────────────────────────────────────────────────
+interface SaveProgressModalProps {
+  visible: boolean;
+  /** deckName: passed only when isRandom=true (user chose to save as new deck) */
+  onSave: (deckName?: string) => void;
+  onDiscard: () => void;
+  onCancel: () => void;
+  hasProgress: boolean;
+  deckName: string;
+  /** True = session from "Ngẫu nhiên" tab — offer to save as new deck */
+  isRandom: boolean;
+}
+
+function SaveProgressModal({ visible, onSave, onDiscard, onCancel, hasProgress, deckName, isRandom }: SaveProgressModalProps) {
+  const [name, setName] = useState('Bộ thẻ ngẫu nhiên');
+
+  useEffect(() => {
+    if (visible) setName('Bộ thẻ ngẫu nhiên');
+  }, [visible]);
+
+  const canSaveDeck = hasProgress && (!isRandom || name.trim().length > 0);
+
+  return (
+    <Modal
+      title="Lưu tiến độ học?"
+      open={visible}
+      onCancel={onCancel}
+      footer={[
+        <Button key="discard" onClick={onDiscard} className="!rounded-xl">
+          Không lưu
+        </Button>,
+        <Button
+          key="save"
+          type="primary"
+          disabled={!canSaveDeck}
+          onClick={() => onSave(isRandom ? name.trim() : undefined)}
+          className="!font-bold !rounded-xl"
+        >
+          Lưu tiến độ
+        </Button>,
+      ]}
+      className="kmate-modal"
+    >
+      {hasProgress ? (
+        <div className="space-y-4">
+          <p className="text-slate-300">
+            Bạn đã ôn dở <strong className="text-white">{deckName || 'bộ thẻ này'}</strong>.
+            Lưu tiến độ để học tiếp sau?
+          </p>
+          {isRandom && (
+            <div>
+              <label className="text-xs text-slate-400 block mb-1.5">Lưu thành bộ thẻ mới</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Nhập tên bộ thẻ..."
+                className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-primary transition-colors"
+              />
+            </div>
+          )}
+          {!isRandom && (
+            <p className="text-sm text-slate-500 italic">
+              Tiến độ sẽ được lưu lại. Bạn có thể tiếp tục bất cứ lúc nào.
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-slate-300">
+          Bạn chưa ôn thẻ nào. Thoát mà không lưu?
+        </p>
+      )}
+    </Modal>
+  );
+}
+
 interface ReviewModeProps {
   cards: Flashcard[];
   deckId: string | null;
   deckName: string;
   streak: number;
+  sessionId: string | null;
   initialIndex?: number;
   initialAnsweredIds?: string[];
-  onBack: () => void;
+  /** Called when user clicks the back button — parent shows the save-prompt modal. */
+  onRequestExit: (hasProgress: boolean, answeredCount: number, currentIdx: number) => void;
 }
 
-function ReviewMode({ cards, deckId, deckName, streak, initialIndex = 0, initialAnsweredIds = [], onBack }: ReviewModeProps) {
+function ReviewMode({ cards, deckId, deckName, streak, sessionId, initialIndex = 0, initialAnsweredIds = [], onRequestExit }: ReviewModeProps) {
   const { session, setSession, updateProgress } = useFlashcardStore();
 
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isRevealed, setIsRevealed] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [mascotMsg, setMascotMsg] = useState<string>();
+  const [direction, setDirection] = useState(0);
+  const [showRating, setShowRating] = useState(false);
 
   const totalCards = cards.length;
   const currentCard = cards[currentIndex];
   const progressPercent = totalCards > 0 ? Math.round(((currentIndex + (completed ? 1 : 0)) / totalCards) * 100) : 0;
 
   const answeredIdsRef = useRef<string[]>(initialAnsweredIds);
-  const sessionIdRef = useRef<string | null>(null);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync store session ID
+  // Keyboard navigation
   useEffect(() => {
-    if (session?.sessionId) {
-      sessionIdRef.current = session.sessionId;
-    }
-  }, [session]);
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        if (e.key === 'ArrowRight' && currentIndex < totalCards - 1) {
+          goToCard(currentIndex + 1, 1);
+        } else if (e.key === 'ArrowLeft' && currentIndex > 0) {
+          goToCard(currentIndex - 1, -1);
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [currentIndex, totalCards]);
+
+  const goToCard = (idx: number, dir: number) => {
+    if (idx < 0 || idx >= totalCards) return;
+    setDirection(dir);
+    setIsRevealed(false);
+    setShowRating(false);
+    setCurrentIndex(idx);
+    const newAnsweredIds = answeredIdsRef.current;
+    saveProgress(idx, newAnsweredIds);
+  };
+
+  // beforeunload — uses sessionId prop and store session for the beacon check
+  useEffect(() => {
+    const handleUnload = () => {
+      const sid = sessionId ?? session?.sessionId;
+      if (!sid) return;
+      const state = useFlashcardStore.getState();
+      if (state.session && state.session.status === 'IN_PROGRESS') {
+        // Fire-and-forget: use sendBeacon for reliability
+        const body = JSON.stringify({
+          sessionId: sid,
+          currentIndex: state.session.currentIndex,
+          answeredIds: state.session.answeredIds ?? [],
+        });
+        navigator.sendBeacon('/api/flashcards/session/progress', body);
+      }
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [sessionId, session]);
 
   const saveProgress = useCallback(async (idx: number, answered: string[]) => {
-    if (!sessionIdRef.current) return;
+    const sid = sessionId ?? session?.sessionId;
+    if (!sid) return;
     updateProgress(idx, answered);
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(async () => {
-      try {
-        await flashcardService.updateSessionProgress({
-          sessionId: sessionIdRef.current!,
-          currentIndex: idx,
-          answeredIds: answered,
-        });
-      } catch {
-        // Non-fatal — local state already updated via store
-      }
-    }, 500);
-  }, [updateProgress]);
+    try {
+      // Immediate save — no debounce so progress is never lost on rapid navigation
+      await flashcardService.updateSessionProgress({
+        sessionId: sid,
+        currentIndex: idx,
+        answeredIds: answered,
+      });
+    } catch {
+      // Non-fatal — local state already updated via store
+    }
+  }, [sessionId, session, updateProgress]);
 
   const handleRating = async (rating: Rating) => {
     if (!currentCard) return;
     const quality = RATING_CONFIG[rating].quality;
 
-    // Call review API
     try {
       await flashcardService.review({ flashcardId: currentCard.id, quality });
     } catch {
@@ -236,14 +408,12 @@ function ReviewMode({ cards, deckId, deckName, streak, initialIndex = 0, initial
     answeredIdsRef.current = newAnsweredIds;
 
     if (currentIndex < totalCards - 1) {
-      const nextIdx = currentIndex + 1;
-      setCurrentIndex(nextIdx);
-      saveProgress(nextIdx, newAnsweredIds);
+      goToCard(currentIndex + 1, 1);
     } else {
-      // Completed all cards
-      if (sessionIdRef.current) {
+      const sid = sessionId ?? session?.sessionId;
+      if (sid) {
         try {
-          await flashcardService.completeSession({ sessionId: sessionIdRef.current });
+          await flashcardService.completeSession({ sessionId: sid });
           setSession(null);
         } catch { /* non-fatal */ }
       }
@@ -251,12 +421,17 @@ function ReviewMode({ cards, deckId, deckName, streak, initialIndex = 0, initial
     }
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      // No-op cleanup — timer removed
     };
   }, []);
+
+  const handleBack = () => {
+    const answered = answeredIdsRef.current.length;
+    const hasProgress = currentIndex > 0 || answered > 0;
+    onRequestExit(hasProgress, answered, currentIndex);
+  };
 
   if (completed) {
     return (
@@ -274,18 +449,19 @@ function ReviewMode({ cards, deckId, deckName, streak, initialIndex = 0, initial
             setCurrentIndex(0);
             setCompleted(false);
             setIsRevealed(false);
+            setShowRating(false);
             answeredIdsRef.current = [];
           }}
             icon={<ReloadOutlined />}
             className="!bg-white/5 !text-white !border !border-white/10 !font-bold !rounded-xl hover:!bg-white/10 transition-all">
             Ôn lại
           </Button>
-          <Button size="large" type="primary" onClick={onBack}
+          <Button size="large" type="primary" onClick={handleBack}
             className="!font-bold !rounded-xl">
             Chọn bộ thẻ khác
           </Button>
         </div>
-        <KMateMascot message="Chúc mừng bạn! Tuyệt vời lắm!" />
+        <KMateMascot messageApi="Chúc mừng bạn! Tuyệt vời lắm!" />
       </div>
     );
   }
@@ -294,7 +470,7 @@ function ReviewMode({ cards, deckId, deckName, streak, initialIndex = 0, initial
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
         <p className="text-slate-400 text-lg">Không có thẻ nào cần ôn. Hãy tạo thẻ mới!</p>
-        <Button type="primary" onClick={onBack} className="!font-bold !rounded-xl">
+        <Button type="primary" onClick={handleBack} className="!font-bold !rounded-xl">
           Quay lại
         </Button>
       </div>
@@ -304,7 +480,7 @@ function ReviewMode({ cards, deckId, deckName, streak, initialIndex = 0, initial
   return (
     <div className="flex flex-col items-center gap-6 pb-8 animate-fade-in">
       <div className="w-full flex items-center justify-between gap-4">
-        <button onClick={onBack}
+        <button onClick={handleBack}
           className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium !bg-transparent border-0 cursor-pointer">
           <ArrowLeftOutlined />
           <span>Quay lại</span>
@@ -331,20 +507,100 @@ function ReviewMode({ cards, deckId, deckName, streak, initialIndex = 0, initial
         </div>
       </div>
 
-      <FlashcardDisplay card={currentCard} isRevealed={isRevealed} onReveal={() => setIsRevealed(true)} />
+      {/* Card with flip + slide animation + drag */}
+      <div className="w-full flex flex-col items-center gap-4">
+        <AnimatePresence mode="wait" custom={direction}>
+          <motion.div
+            key={currentIndex}
+            custom={direction}
+            initial={{ opacity: 0, x: direction * 120 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: direction * -120 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+            className="w-full flex flex-col items-center"
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.15}
+            onDragEnd={(_, info) => {
+              const threshold = 80;
+              if (info.offset.x < -threshold && currentIndex < totalCards - 1) {
+                goToCard(currentIndex + 1, 1);
+              } else if (info.offset.x > threshold && currentIndex > 0) {
+                goToCard(currentIndex - 1, -1);
+              }
+            }}
+          >
+            <FlashcardDisplay
+              card={currentCard}
+              isRevealed={isRevealed}
+              onReveal={() => setIsRevealed(r => !r)}
+              deckColor={DECK_COLORS[currentIndex % DECK_COLORS.length]}
+            />
+          </motion.div>
+        </AnimatePresence>
 
-      <div className={`w-full max-w-lg flex gap-3 overflow-hidden transition-all duration-500 ease-in-out ${isRevealed ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0'}`}>
-        {(['again', 'hard', 'good', 'easy'] as Rating[]).map((rating) => (
-          <RatingButton key={rating} rating={rating} onClick={() => handleRating(rating)} />
-        ))}
+        {/* Navigation arrows */}
+        <div className="flex items-center gap-6 mt-2">
+          <button
+            onClick={() => goToCard(currentIndex - 1, -1)}
+            disabled={currentIndex === 0}
+            className="flex items-center justify-center w-12 h-12 rounded-full border transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-110 active:scale-95 active:!bg-white/5"
+            style={{ borderColor: 'rgba(124,77,255,0.4)', color: '#7C4DFF' }}
+          >
+            <LeftOutlined />
+          </button>
+          <span className="text-sm font-bold text-slate-400 min-w-[3rem] text-center">
+            {currentIndex + 1} / {totalCards}
+          </span>
+          <button
+            onClick={() => goToCard(currentIndex + 1, 1)}
+            disabled={currentIndex === totalCards - 1}
+            className="flex items-center justify-center w-12 h-12 rounded-full border transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-110 active:scale-95 active:!bg-white/5"
+            style={{ borderColor: 'rgba(124,77,255,0.4)', color: '#7C4DFF' }}
+          >
+            <RightOutlined />
+          </button>
+        </div>
       </div>
 
-      <KMateMascot message={mascotMsg} />
+      {/* Rating buttons — toggleable */}
+      <div className="w-full max-w-lg">
+        {!isRevealed ? null : (
+          <>
+            {!showRating ? (
+              <div className="flex justify-center">
+                <button
+                  onClick={() => setShowRating(true)}
+                  className="text-xs text-slate-500 hover:text-slate-300 transition-colors underline underline-offset-2"
+                >
+                  Đánh giá thẻ này
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex items-center gap-3 w-full">
+                  {(['again', 'hard', 'good', 'easy'] as Rating[]).map((rating) => (
+                    <RatingButton key={rating} rating={rating} onClick={() => handleRating(rating)} />
+                  ))}
+                </div>
+                <button
+                  onClick={() => setShowRating(false)}
+                  className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+                >
+                  Ẩn đánh giá
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <KMateMascot messageApi={mascotMsg} />
     </div>
   );
 }
 
-// ── New: Video deck card with YouTube thumbnail ──────────────────────────────
+// ── Video deck card ────────────────────────────────────────────────────────────
 function VideoDeckCard({ deck, onStart }: {
   deck: FlashcardDeck & { youtubeId?: string; videoTitle?: string };
   onStart: () => void;
@@ -356,7 +612,7 @@ function VideoDeckCard({ deck, onStart }: {
       onClick={onStart}
     >
       {/* YouTube thumbnail */}
-      <div className="w-28 h-20 rounded-lg overflow-hidden bg-dark-400 flex-shrink-0">
+      <div className="w-28 h-20 rounded-lg overflow-hidden bg-dark-400 flex-shrink-0 flex items-center justify-center relative">
         {deck.youtubeId ? (
           <img
             src={`https://img.youtube.com/vi/${deck.youtubeId}/mqdefault.jpg`}
@@ -364,13 +620,8 @@ function VideoDeckCard({ deck, onStart }: {
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-600/30 to-cyan-500/30 flex items-center justify-center">
+            <span className="text-3xl animate-bounce" style={{ animationDuration: '2s' }}>🎬</span>
           </div>
         )}
       </div>
@@ -464,7 +715,7 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, 
       )}
 
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div className="user-glass-card p-4 flex flex-col items-center gap-1">
           <span className="text-2xl font-extrabold text-white">{totalCards}</span>
           <span className="text-xs text-slate-400">Tổng thẻ</span>
@@ -472,6 +723,10 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, 
         <div className="user-glass-card p-4 flex flex-col items-center gap-1">
           <span className="text-2xl font-extrabold text-orange-400">{dueToday}</span>
           <span className="text-xs text-slate-400">Cần ôn hôm nay</span>
+        </div>
+        <div className="user-glass-card p-4 flex flex-col items-center gap-1">
+          <span className="text-2xl font-extrabold text-emerald-400">{Math.max(totalCards - dueToday, 0)}</span>
+          <span className="text-xs text-slate-400">Đã học</span>
         </div>
         <div className="user-glass-card p-4 flex flex-col items-center gap-1">
           <span className="text-2xl font-extrabold text-cyan-400">{streak}</span>
@@ -483,7 +738,7 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, 
       {defaultDecks.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold text-white">Bộ từ cơ bản</h2>
+            <h2 className="text-xl font-bold text-white">Bộ từ của tôi</h2>
             <div className="h-px flex-1 bg-dark-200" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -536,14 +791,38 @@ export default function UserFlashcardPage() {
   const [activeDeck, setActiveDeck] = useState<FlashcardDeck | null>(null);
   const [activeSession, setActiveSession] = useState<{
     sessionId: string;
+    deckId: string | null;
     cardIds: string[];
     currentIndex: number;
     answeredIds: string[];
   } | null>(null);
   const [streak, setStreak] = useState(0);
   const [resumeModalVisible, setResumeModalVisible] = useState(false);
+  const [activeTab, setActiveTab] = useState<'decks' | 'create-from-video' | 'due'>('decks');
+
+  /** True when the current session was started from the "Ngẫu nhiên" tab */
+  const [isRandomSession, setIsRandomSession] = useState(false);
+
+  /** State for the save-progress popup */
+  const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [pendingExit, setPendingExit] = useState<{ hasProgress: boolean; answeredCount: number; currentIndex: number } | null>(null);
 
   const { session, setSession, clearSession } = useFlashcardStore();
+
+  // Persists across renders within the same page lifetime.
+  // True = user already saved this session → skip resume modal on next load.
+  // Read directly from localStorage on mount to avoid Zustand async-rehydration lag.
+  const skipResumeModalRef = useRef(
+    (() => {
+      try {
+        const raw = localStorage.getItem('kmate-flashcard');
+        const parsed = raw ? JSON.parse(raw) : null;
+        return parsed?.state?.session?.saved === true;
+      } catch {
+        return false;
+      }
+    })()
+  );
 
   // Load initial data + check for existing session
   useEffect(() => {
@@ -554,26 +833,41 @@ export default function UserFlashcardPage() {
       flashcardService.getSession().catch(() => null),
     ]).then(([decksRes, dueRes, statsRes, sessionRes]) => {
       if (decksRes) setDecks(decksRes.data.data);
-      if (dueRes) setDueCards(dueRes.data.data);
+      if (dueRes) {
+        const dueData = dueRes.data.data;
+        setDueCards(dueData.flashcards);
+      }
       if (statsRes) {
         setStats(statsRes.data.data);
         setStreak(statsRes.data.data.streak);
       }
       if (sessionRes?.data?.data) {
         const s = sessionRes.data.data;
-        setActiveSession({
+        const sessionData = {
           sessionId: s.id,
+          deckId: s.deckId as string | null,
           cardIds: s.cardIds as string[],
           currentIndex: s.currentIndex,
           answeredIds: s.answeredIds as string[],
-        });
-        setResumeModalVisible(true);
+          source: (s.deckId ? 'deck' : 'due_random') as 'deck' | 'due_random',
+          saved: !!skipResumeModalRef.current,
+          status: s.status as 'IN_PROGRESS' | 'ABANDONED' | 'COMPLETED',
+        };
+        // Populate BOTH React state and Zustand store so handleSelectDeck can see it
+        setActiveSession(sessionData);
+        setSession(sessionData);
+        // Only show resume modal if user has not already saved this session
+        // Use skipResumeModalRef (localStorage) instead of session?.saved (stale on first render)
+        if (!skipResumeModalRef.current) {
+          setResumeModalVisible(true);
+        }
+        // Reset the flag so the modal can appear again for a fresh session
+        skipResumeModalRef.current = false;
       }
     }).finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Split decks into default (pre-seeded) and video-linked
   const defaultDecks = decks.filter((d) => (d as any).isDefault === true);
   const videoDecks = decks
     .filter((d) => (d as any).isDefault !== true)
@@ -581,6 +875,14 @@ export default function UserFlashcardPage() {
 
   const handleSelectDeck = async (deck: FlashcardDeck) => {
     setActiveDeck(deck);
+    setIsRandomSession(false);
+
+    // Check if there's a saved session for this deck in the store (from localStorage)
+    const storeState = useFlashcardStore.getState();
+    const savedSession = storeState.session;
+    // Resume if session exists for this deck (regardless of saved flag — saved means user clicked Lưu)
+    const isSavedForThisDeck = savedSession?.deckId === deck.id && !!savedSession?.sessionId;
+
     let cardsToStudy: Flashcard[] = dueCards;
 
     if (deck.dueCount > 0) {
@@ -592,28 +894,76 @@ export default function UserFlashcardPage() {
       }
     }
 
-    // Start a new session via API
     const cardIds = cardsToStudy.map((c) => c.id);
     try {
-      const sessionRes = await flashcardService.startSession({ deckId: deck.id, cardIds });
+      // Resume saved session if it belongs to this deck, otherwise start fresh
+      const sessionRes = await flashcardService.startSession({
+        deckId: deck.id,
+        cardIds,
+        ...(isSavedForThisDeck ? { sessionId: savedSession.sessionId! } : {}),
+      });
       const sessionData = sessionRes.data.data;
       setSession({
         sessionId: sessionData.id,
         deckId: deck.id,
         cardIds,
-        currentIndex: 0,
-        answeredIds: [],
+        currentIndex: sessionData.currentIndex,
+        answeredIds: sessionData.answeredIds as string[],
+        source: 'deck',
+        saved: false,
+        status: 'IN_PROGRESS',
       });
       setActiveSession({
         sessionId: sessionData.id,
+        deckId: deck.id,
         cardIds,
-        currentIndex: 0,
-        answeredIds: [],
+        currentIndex: sessionData.currentIndex,
+        answeredIds: sessionData.answeredIds as string[],
       });
       setActiveCards(cardsToStudy);
     } catch {
-      // Fallback: start without session persistence
       setActiveCards(cardsToStudy);
+    }
+  };
+
+  const handleStartRandomReview = async (cards: Flashcard[]) => {
+    setActiveDeck(null);
+    setIsRandomSession(true);
+
+    // Check if there's a saved random session in the store
+    const storeState = useFlashcardStore.getState();
+    const savedSession = storeState.session;
+    // Resume if session exists for random deck (regardless of saved flag)
+    const isSavedRandom = savedSession?.deckId === null && !!savedSession?.sessionId;
+
+    const cardIds = cards.map((c) => c.id);
+    try {
+      // Resume saved random session if any, otherwise start fresh
+      const sessionRes = await flashcardService.startSession({
+        cardIds,
+        ...(isSavedRandom ? { sessionId: savedSession.sessionId! } : {}),
+      });
+      const sessionData = sessionRes.data.data;
+      setSession({
+        sessionId: sessionData.id,
+        deckId: null,
+        cardIds,
+        currentIndex: sessionData.currentIndex,
+        answeredIds: sessionData.answeredIds as string[],
+        source: 'due_random',
+        saved: false,
+        status: 'IN_PROGRESS',
+      });
+      setActiveSession({
+        sessionId: sessionData.id,
+        deckId: null,
+        cardIds,
+        currentIndex: sessionData.currentIndex,
+        answeredIds: sessionData.answeredIds as string[],
+      });
+      setActiveCards(cards);
+    } catch {
+      setActiveCards(cards);
     }
   };
 
@@ -621,28 +971,58 @@ export default function UserFlashcardPage() {
     if (!activeSession) return;
     setResumeModalVisible(false);
 
-    // Find the deck matching this session
-    const matchedDeck = decks.find((d) => d.id === (activeSession as { deckId?: string }).deckId) ?? null;
+    const matchedDeck = decks.find((d) => d.id === activeSession.deckId) ?? null;
     setActiveDeck(matchedDeck);
 
-    // Load cards for this session
-    const cardIds = activeSession.cardIds;
+    const sessionCardIds = activeSession.cardIds;
+
     try {
-      const allCardsRes = await flashcardService.getFlashcards({ limit: 500 });
-      const allCards = allCardsRes.data.data;
-      const sessionCards = allCards.filter((c) => cardIds.includes(c.id));
-      setActiveSession({
-        ...activeSession,
-        cardIds: sessionCards.map((c) => c.id),
-      });
-      setActiveCards(sessionCards);
-      setSession({
+      const resumeRes = await flashcardService.startSession({
+        cardIds: sessionCardIds,
         sessionId: activeSession.sessionId,
-        deckId: (activeSession as { deckId?: string }).deckId ?? null,
-        cardIds: activeSession.cardIds,
-        currentIndex: activeSession.currentIndex,
-        answeredIds: activeSession.answeredIds,
       });
+      const resumeData = resumeRes.data.data;
+
+      // Fetch real card data for all cards in the session
+      let fetchedCards: Flashcard[] = [];
+      try {
+        const cardsRes = await flashcardService.getSessionCards(sessionCardIds);
+        fetchedCards = cardsRes.data.data;
+      } catch {
+        // Fallback: build placeholder cards if API fails
+        fetchedCards = sessionCardIds.map((id) => ({
+          id,
+          front: '',
+          back: '',
+          deckId: resumeData.deckId ?? '',
+          interval: 0,
+          easeFactor: 2.5,
+          repetitions: 0,
+          nextReview: null,
+          createdAt: '',
+          updatedAt: '',
+        }));
+      }
+
+      setActiveCards(fetchedCards);
+      setActiveSession({
+        sessionId: resumeData.id,
+        deckId: resumeData.deckId,
+        cardIds: resumeData.cardIds as string[],
+        currentIndex: resumeData.currentIndex,
+        answeredIds: resumeData.answeredIds as string[],
+      });
+      setSession({
+        sessionId: resumeData.id,
+        deckId: resumeData.deckId,
+        cardIds: resumeData.cardIds as string[],
+        currentIndex: resumeData.currentIndex,
+        answeredIds: resumeData.answeredIds as string[],
+        source: resumeData.deckId ? 'deck' : 'due_random',
+        saved: false,
+        status: 'IN_PROGRESS',
+      });
+      setIsRandomSession(!resumeData.deckId);
     } catch {
       message.error('Không thể tải lại phiên ôn tập');
     }
@@ -650,21 +1030,109 @@ export default function UserFlashcardPage() {
 
   const handleDismissResume = () => {
     setResumeModalVisible(false);
-    // Mark session as abandoned
     if (activeSession) {
       flashcardService.completeSession({ sessionId: activeSession.sessionId }).catch(() => {});
       setActiveSession(null);
     }
   };
 
+  const handleRequestExit = (hasProgress: boolean, answeredCount: number, currentIdx: number) => {
+    setPendingExit({ hasProgress, answeredCount, currentIndex: currentIdx });
+    setSaveModalVisible(true);
+  };
+
+  const handleSaveProgress = async (deckName?: string) => {
+    setSaveModalVisible(false);
+
+    // Always read from the Zustand store — it always has the latest progress.
+    // activeSession is React state and may be stale/null when user resumes after page reload.
+    const storeState = useFlashcardStore.getState();
+    const storeSession = storeState.session;
+    const sessionId = storeSession?.sessionId ?? activeSession?.sessionId;
+
+    // Always save current progress to the session
+    if (sessionId) {
+      try {
+        await flashcardService.updateSessionProgress({
+          sessionId,
+          currentIndex: pendingExit?.currentIndex ?? storeSession?.currentIndex ?? 0,
+          answeredIds: storeSession?.answeredIds ?? [],
+        });
+      } catch { /* non-fatal */ }
+    }
+
+    if (isRandomSession && deckName?.trim()) {
+      // Random session: save the answered cards as a new deck
+      try {
+        await flashcardService.saveSessionAsDeck({ sessionId: sessionId ?? '', deckName: deckName.trim() });
+        message.success(`Đã lưu "${deckName}" với ${pendingExit?.answeredCount ?? 0} thẻ!`);
+        const [decksRes, statsRes] = await Promise.all([
+          flashcardService.getDecks(),
+          flashcardService.getStats(),
+        ]);
+        setDecks(decksRes.data.data);
+        setStats(statsRes.data.data);
+      } catch {
+        message.error('Không thể lưu tiến độ');
+      }
+    } else {
+      // Deck session (or cancelled random): just keep progress saved
+      message.success(`Đã lưu tiến độ "${activeDeck?.name || deckName}" — ${pendingExit?.answeredCount ?? 0} thẻ đã ôn!`);
+      // Reload decks and stats so dueCount reflects remaining cards
+      const [decksRes, statsRes] = await Promise.all([
+        flashcardService.getDecks(),
+        flashcardService.getStats(),
+      ]);
+      setDecks(decksRes.data.data);
+      setStats(statsRes.data.data);
+    }
+
+    // Mark the session as saved in the store instead of clearing it
+    // so on next page load we know to skip the resume modal
+    setSession({
+      sessionId: sessionId ?? null,
+      deckId: storeSession?.deckId ?? activeSession?.deckId ?? null,
+      cardIds: storeSession?.cardIds ?? activeSession?.cardIds ?? [],
+      currentIndex: pendingExit?.currentIndex ?? storeSession?.currentIndex ?? 0,
+      answeredIds: storeSession?.answeredIds ?? [],
+      source: isRandomSession ? 'due_random' : 'deck',
+      saved: true,
+      status: 'IN_PROGRESS',
+    });
+
+    // Mark in localStorage so skipResumeModalRef picks it up on next page load
+    skipResumeModalRef.current = true;
+
+    // Clear UI state but keep the store session alive
+    setActiveSession(null);
+    setActiveCards(null);
+    setActiveDeck(null);
+    setIsRandomSession(false);
+  };
+
+  const handleDiscardProgress = () => {
+    setSaveModalVisible(false);
+    const storeState = useFlashcardStore.getState();
+    const sessionId = storeState.session?.sessionId ?? activeSession?.sessionId;
+    if (sessionId) {
+      flashcardService.completeSession({ sessionId }).catch(() => {});
+    }
+    clearSession();
+    setActiveSession(null);
+    setActiveCards(null);
+    setActiveDeck(null);
+    setIsRandomSession(false);
+  };
+
   const handleBackToDeckList = () => {
     setActiveCards(null);
     setActiveDeck(null);
     setActiveSession(null);
+    setIsRandomSession(false);
     clearSession();
   };
 
-  const activeDeckName = activeDeck?.name ?? '';
+  const activeDeckName = activeDeck?.name ?? (isRandomSession ? 'Ngẫu nhiên' : '');
   const resumeData = activeSession && activeCards
     ? {
         initialIndex: activeSession.currentIndex,
@@ -695,26 +1163,86 @@ export default function UserFlashcardPage() {
         </p>
       </Modal>
 
+      {/* Save-progress modal */}
+      <SaveProgressModal
+        visible={saveModalVisible}
+        hasProgress={pendingExit?.hasProgress ?? false}
+        deckName={activeDeckName || 'Ngẫu nhiên'}
+        isRandom={isRandomSession}
+        onSave={handleSaveProgress}
+        onDiscard={handleDiscardProgress}
+        onCancel={() => setSaveModalVisible(false)}
+      />
+
       {activeCards !== null && activeCards.length > 0 ? (
         <ReviewMode
           cards={activeCards}
           deckId={activeDeck?.id ?? null}
           deckName={activeDeckName}
           streak={streak}
+          sessionId={activeSession?.sessionId ?? session?.sessionId ?? null}
           initialIndex={resumeData.initialIndex ?? 0}
           initialAnsweredIds={resumeData.initialAnsweredIds ?? []}
-          onBack={handleBackToDeckList}
+          onRequestExit={handleRequestExit}
         />
       ) : (
-        <DeckListView
-          defaultDecks={defaultDecks}
-          videoDecks={videoDecks}
-          stats={stats}
-          loading={loading}
-          onSelectDeck={handleSelectDeck}
-          hasInProgressSession={!!activeSession}
-          onResume={handleResumeSession}
-        />
+        <>
+          {/* Tab bar — renamed "Due" → "Ngẫu nhiên" */}
+          <div className="flex gap-2 mb-6">
+            {[
+              { key: 'decks' as const, label: 'Bộ thẻ' },
+              { key: 'create-from-video' as const, label: 'Tạo từ video' },
+              { key: 'due' as const, label: `Ngẫu nhiên (${stats?.dueToday ?? 0})` },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                  activeTab === tab.key
+                    ? 'bg-primary text-white shadow-md shadow-primary/30'
+                    : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* FAB — only in decks tab */}
+          {activeTab === 'decks' && (
+            <button
+              onClick={() => setActiveTab('create-from-video')}
+              className="fixed bottom-8 right-8 w-14 h-14 rounded-full bg-primary shadow-lg shadow-primary/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-40"
+              title="Tạo thẻ từ video"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          )}
+
+          {activeTab === 'create-from-video' ? (
+            <CreateFromVideoView />
+          ) : (
+            activeTab === 'due' ? (
+              <DueCardsView
+                dueCards={dueCards}
+                onStartReview={(cards) => handleStartRandomReview(cards)}
+              />
+            ) : (
+              <DeckListView
+                defaultDecks={defaultDecks}
+                videoDecks={videoDecks}
+                stats={stats}
+                loading={loading}
+                onSelectDeck={handleSelectDeck}
+                hasInProgressSession={!!activeSession}
+                onResume={handleResumeSession}
+              />
+            )
+          )}
+        </>
       )}
     </div>
   );

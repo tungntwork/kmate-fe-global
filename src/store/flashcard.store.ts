@@ -16,6 +16,12 @@ export interface FlashcardSessionState {
   cardIds: string[];
   currentIndex: number;
   answeredIds: string[];
+  /** 'deck' = deck-based session; 'due_random' = shuffled due cards started from Ngẫu nhiên tab */
+  source: 'deck' | 'due_random';
+  /** True after user has clicked "Lưu tiến độ" — skip resume modal on next load */
+  saved: boolean;
+  /** Session status — used for beforeunload beacon logic */
+  status?: 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED';
 }
 
 interface FlashcardState {

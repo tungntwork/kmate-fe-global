@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Spin, message, Modal } from 'antd';
+import { Button, Spin, Modal, message } from 'antd';
 import {
   QuestionOutlined,
   CheckCircleOutlined,
@@ -16,7 +16,7 @@ import {
   FireOutlined,
 } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
-import { quizService, flashcardService, type QuizDeck, type QuizQuestion } from '@/lib/api-services';
+import { quizService, flashcardService, type QuizDeck, type QuizQuestion, type QuizResult } from '@/lib/api-services';
 import { useQuizStore } from '@/store/quiz.store';
 
 type Screen = 'home' | 'quiz' | 'result';
@@ -144,11 +144,19 @@ function QuizHomeScreen({
   stats,
   loading,
   onStartQuiz,
+  wrongAnswersData,
+  loadingWrongAnswers,
 }: {
   decks: DeckInfo[];
   stats: UserStats | null;
   loading: boolean;
-  onStartQuiz: (mode: 'deck' | 'random' | 'ai', deckId?: string) => void;
+  onStartQuiz: (mode: 'deck' | 'random' | 'ai' | 'wrong_answers', deckId?: string, sourceType?: string, sourceIds?: { wrongQuizIds?: string[] }) => void;
+  wrongAnswersData?: {
+    totalWrongAnswers: number;
+    totalUniqueWords: number;
+    quizIds: string[];
+  };
+  loadingWrongAnswers?: boolean;
 }) {
   const [deckLoading, setDeckLoading] = useState<'random' | 'ai' | null>(null);
 
@@ -216,6 +224,59 @@ function QuizHomeScreen({
         </div>
       </div>
 
+      {/* Quiz từ câu sai */}
+      {wrongAnswersData && wrongAnswersData.totalUniqueWords >= 4 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="rounded-2xl p-5 cursor-pointer select-none"
+          style={{
+            background: 'rgba(249,115,22,0.06)',
+            border: '1px solid rgba(249,115,22,0.25)',
+          }}
+          whileHover={{ scale: 1.01, borderColor: 'rgba(249,115,22,0.5)' }}
+          onClick={() =>
+            onStartQuiz(
+              'wrong_answers',
+              undefined,
+              'wrong_answers',
+              { wrongQuizIds: wrongAnswersData.quizIds },
+            )
+          }
+        >
+          <div className="flex items-center gap-3 mb-2">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl"
+              style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)' }}
+            >
+              <CloseCircleOutlined style={{ color: '#f59e0b' }} />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-white font-bold text-sm">Quiz từ câu sai</h3>
+              <p className="text-slate-400 text-xs">
+                {wrongAnswersData.totalUniqueWords} từ cần ôn lại
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span
+              className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(249,115,22,0.12)', color: '#f59e0b', border: '1px solid rgba(249,115,22,0.3)' }}
+            >
+              {wrongAnswersData.totalWrongAnswers} câu sai
+            </span>
+            <Button
+              size="small"
+              className="!font-bold !rounded-lg !text-xs"
+              style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', color: '#f59e0b' }}
+            >
+              Luyện lại
+            </Button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Flashcard decks */}
       {loading ? (
         <div className="flex justify-center py-12">
@@ -248,7 +309,9 @@ function QuizHomeScreen({
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-white font-bold text-sm truncate">{deck.name}</h3>
-                    <p className="text-slate-500 text-xs">{deck.cardCount} từ</p>
+                    <p className="text-slate-500 text-xs">
+                      Tổng cộng <span className="font-bold text-white">{deck.cardCount}</span> từ
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
@@ -292,15 +355,19 @@ function QuizHomeScreen({
 
 function QuizTakingScreen({
   onBack,
+  onSubmit,
 }: {
   onBack: () => void;
+  onSubmit: () => void;
 }) {
   const { session, answerQuestion, nextQuestion, prevQuestion, goToQuestion } = useQuizStore();
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const [questionStartTime, setQuestionStartTime] = useState(Date.now());
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [selectedFeedback, setSelectedFeedback] = useState<Record<string, boolean>>({});
 
-  // Timer
+  // Timer display (no auto-submit on expiry — user must click "Nộp bài")
   useEffect(() => {
     if (!session || session.status !== 'taking') return;
     setTimeLeft(session.timeLimit);
@@ -321,6 +388,7 @@ function QuizTakingScreen({
   // Reset question timer when question changes
   useEffect(() => {
     setQuestionStartTime(Date.now());
+    setShowFeedback(false);
   }, [session?.currentIndex]);
 
   if (!session || session.status !== 'taking') return null;
@@ -334,7 +402,13 @@ function QuizTakingScreen({
   const fmtTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
   const handleSelectOption = (optId: string) => {
+    if (showFeedback) return;
+    const isCorrect = currentQ.options.find(o => o.id === optId)?.isCorrect ?? false;
+
     answerQuestion(currentQ.id, optId);
+    setSelectedFeedback(prev => ({ ...prev, [currentQ.id]: isCorrect }));
+    setShowFeedback(true);
+    // User controls navigation manually — no auto-advance
   };
 
   const handleNext = () => {
@@ -347,6 +421,32 @@ function QuizTakingScreen({
 
   const answeredCount = Object.keys(answers).length;
   const allAnswered = answeredCount === total;
+
+  const getOptionStyle = (opt: { id: string; text: string; isCorrect: boolean }) => {
+    const isSelected = selectedAnswer === opt.id;
+    if (!showFeedback) {
+      return {
+        background: isSelected ? 'rgba(124,77,255,0.15)' : 'rgba(255,255,255,0.03)',
+        borderColor: isSelected ? '#7C4DFF' : 'rgba(255,255,255,0.08)',
+      };
+    }
+    if (opt.isCorrect) {
+      return {
+        background: 'rgba(34,197,94,0.15)',
+        borderColor: '#22c55e',
+      };
+    }
+    if (isSelected && !opt.isCorrect) {
+      return {
+        background: 'rgba(239,68,68,0.15)',
+        borderColor: '#ef4444',
+      };
+    }
+    return {
+      background: 'rgba(255,255,255,0.03)',
+      borderColor: 'rgba(255,255,255,0.08)',
+    };
+  };
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
@@ -362,30 +462,6 @@ function QuizTakingScreen({
 
         <div className="flex-1" />
 
-        {/* Question navigator dots */}
-        <div className="hidden md:flex items-center gap-1.5">
-          {questions.map((q, i) => {
-            const isAnswered = !!answers[q.id];
-            const isCurrent = i === currentIndex;
-            return (
-              <button
-                key={q.id}
-                onClick={() => goToQuestion(i)}
-                className="w-7 h-7 rounded-full text-[10px] font-bold transition-all cursor-pointer"
-                style={{
-                  background: isCurrent ? '#7C4DFF' : isAnswered ? '#22c55e30' : 'rgba(255,255,255,0.05)',
-                  color: isCurrent ? 'white' : isAnswered ? '#22c55e' : '#6b7280',
-                  border: isCurrent ? '2px solid #7C4DFF' : '1px solid rgba(255,255,255,0.1)',
-                }}
-              >
-                {i + 1}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex-1" />
-
         {/* Timer */}
         <div
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold"
@@ -397,11 +473,6 @@ function QuizTakingScreen({
         >
           <ClockCircleOutlined />
           {fmtTime(timeLeft)}
-        </div>
-
-        {/* Progress */}
-        <div className="text-xs text-slate-400 font-medium">
-          {currentIndex + 1} / {total}
         </div>
       </div>
 
@@ -435,27 +506,48 @@ function QuizTakingScreen({
           )}
 
           {/* Question text */}
-          <div className="text-center text-slate-300 text-base mb-8">
+          <div className="text-center text-slate-300 text-base mb-4">
             {currentQ.question}
           </div>
+
+          {/* Feedback banner */}
+          {showFeedback && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-sm font-bold"
+              style={{
+                background: selectedFeedback[currentQ.id]
+                  ? 'rgba(34,197,94,0.12)'
+                  : 'rgba(239,68,68,0.12)',
+                color: selectedFeedback[currentQ.id] ? '#22c55e' : '#ef4444',
+                border: `1px solid ${selectedFeedback[currentQ.id] ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+              }}
+            >
+              {selectedFeedback[currentQ.id] ? (
+                <><CheckCircleOutlined /> Chính xác!</>
+              ) : (
+                <><CloseCircleOutlined /> Sai rồi!</>
+              )}
+            </motion.div>
+          )}
 
           {/* Options */}
           <div className="space-y-3">
             {currentQ.options.map((opt, i) => {
               const isSelected = selectedAnswer === opt.id;
               const label = OPTION_LABELS[i] ?? String(i);
+              const style = getOptionStyle(opt);
 
               return (
                 <motion.button
                   key={opt.id}
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
+                  whileHover={!showFeedback ? { scale: 1.01 } : {}}
+                  whileTap={!showFeedback ? { scale: 0.99 } : {}}
                   onClick={() => handleSelectOption(opt.id)}
-                  className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all border"
-                  style={{
-                    background: isSelected ? 'rgba(124,77,255,0.15)' : 'rgba(255,255,255,0.03)',
-                    borderColor: isSelected ? '#7C4DFF' : 'rgba(255,255,255,0.08)',
-                  }}
+                  disabled={showFeedback}
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all border cursor-pointer disabled:cursor-default"
+                  style={style}
                 >
                   <div
                     className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black shrink-0"
@@ -467,7 +559,15 @@ function QuizTakingScreen({
                     {label}
                   </div>
                   <span className="text-white font-medium text-sm flex-1">{opt.text}</span>
-                  {isSelected && <CheckCircleOutlined style={{ color: '#7C4DFF', fontSize: 18 }} />}
+                  {showFeedback && opt.isCorrect && (
+                    <CheckCircleOutlined style={{ color: '#22c55e', fontSize: 18 }} />
+                  )}
+                  {showFeedback && isSelected && !opt.isCorrect && (
+                    <CloseCircleOutlined style={{ color: '#ef4444', fontSize: 18 }} />
+                  )}
+                  {!showFeedback && isSelected && (
+                    <CheckCircleOutlined style={{ color: '#7C4DFF', fontSize: 18 }} />
+                  )}
                 </motion.button>
               );
             })}
@@ -506,7 +606,7 @@ function QuizTakingScreen({
           </Button>
         ) : (
           <Button
-            onClick={onBack}
+            onClick={onSubmit}
             disabled={!allAnswered}
             className="!rounded-xl !h-11 !px-6 !font-bold !text-sm !border-0"
             style={{
@@ -525,16 +625,14 @@ function QuizTakingScreen({
 // ─── Result Screen ───────────────────────────────────────────────────────────
 
 function ResultScreen({
+  result,
   onRetry,
   onBack,
 }: {
+  result: QuizResult;
   onRetry: () => void;
   onBack: () => void;
 }) {
-  const { session } = useQuizStore();
-  if (!session?.result) return null;
-
-  const { result } = session;
   const { feedback } = result;
   const scorePct = result.score;
 
@@ -599,7 +697,7 @@ function ResultScreen({
               <CheckCircleOutlined /> Điểm mạnh
             </h3>
             <ul className="space-y-1">
-              {feedback.strengths.map((s, i) => (
+              {feedback.strengths.map((s: string, i: number) => (
                 <li key={i} className="text-slate-300 text-xs">• {s}</li>
               ))}
             </ul>
@@ -611,7 +709,7 @@ function ResultScreen({
               <CloseCircleOutlined /> Cần cải thiện
             </h3>
             <ul className="space-y-1">
-              {feedback.weaknesses.map((w, i) => (
+              {feedback.weaknesses.map((w: string, i: number) => (
                 <li key={i} className="text-slate-300 text-xs">• {w}</li>
               ))}
             </ul>
@@ -623,7 +721,7 @@ function ResultScreen({
               <QuestionOutlined /> Gợi ý
             </h3>
             <ul className="space-y-1">
-              {feedback.recommendations.map((r, i) => (
+              {feedback.recommendations.map((r: string, i: number) => (
                 <li key={i} className="text-slate-300 text-xs">• {r}</li>
               ))}
             </ul>
@@ -636,7 +734,7 @@ function ResultScreen({
         <div className="mt-6">
           <h3 className="text-white font-bold text-base mb-3">Xem lại câu trả lời</h3>
           <div className="space-y-3">
-            {result.review.map((item, i) => (
+            {result.review.map((item: { questionId: string; question: string; questionKorean: string | null; yourAnswer: string | null; correctAnswer: string; options: Array<{ id: string; text: string; isCorrect: boolean }>; isCorrect: boolean }, i: number) => (
               <div
                 key={item.questionId}
                 className="rounded-2xl p-4"
@@ -711,10 +809,23 @@ export default function UserQuizPage() {
   const [resumeModalVisible, setResumeModalVisible] = useState(false);
   const [resumeModalQuizId, setResumeModalQuizId] = useState<string | null>(null);
   const [inProgressCount, setInProgressCount] = useState(0);
+  const [wrongAnswersData, setWrongAnswersData] = useState<{ totalWrongAnswers: number; totalUniqueWords: number; quizIds: string[] } | null>(null);
+  const [loadingWrongAnswers, setLoadingWrongAnswers] = useState(false);
+  const [resumeLoading, setResumeLoading] = useState(false);
+  const [submittedResult, setSubmittedResult] = useState<QuizResult | null>(null);
+  const [lastQuizInfo, setLastQuizInfo] = useState<{ quizId: string; mode: string; deckId?: string; deckName?: string; sourceType?: string; sourceIds?: object } | null>(null);
+  // Used by handleRetry to inject a quiz session without going through Zustand persist
+  const [pendingRetrySession, setPendingRetrySession] = useState<Omit<import('@/store/quiz.store').QuizSession, 'status'> | null>(null);
 
   const saveProgressDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load decks, stats, and check for persisted session on mount
+  // When pendingRetrySession is set, start the quiz immediately
+  useEffect(() => {
+    if (pendingRetrySession) {
+      startQuiz(pendingRetrySession);
+      setPendingRetrySession(null);
+    }
+  }, [pendingRetrySession, startQuiz]);  // Load decks, stats, wrong answers on mount
   useEffect(() => {
     const load = async () => {
       try {
@@ -747,6 +858,22 @@ export default function UserQuizPage() {
       }
     };
     load();
+
+    // Fetch wrong answers separately
+    setLoadingWrongAnswers(true);
+    quizService.getWrongAnswers()
+      .then(res => {
+        const data = res.data.data;
+        if (data && data.totalUniqueWords >= 4) {
+          setWrongAnswersData({
+            totalWrongAnswers: data.totalWrongAnswers,
+            totalUniqueWords: data.totalUniqueWords,
+            quizIds: data.groups.map((g: { quizId: string }) => g.quizId),
+          });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingWrongAnswers(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -762,24 +889,33 @@ export default function UserQuizPage() {
   }, []);
 
   // Start a quiz
-  const handleStartQuiz = useCallback(async (mode: 'deck' | 'random' | 'ai', deckId?: string) => {
+  const handleStartQuiz = useCallback(async (
+    mode: 'deck' | 'random' | 'ai' | 'wrong_answers',
+    deckId?: string,
+    sourceType?: string,
+    sourceIds?: { wrongQuizIds?: string[] },
+  ) => {
     setLoading(true);
     setError('');
     try {
       const res = await quizService.createQuiz({
         deckId: mode === 'deck' ? deckId : undefined,
-        mode,
+        mode: mode === 'wrong_answers' ? 'random' : mode as 'deck' | 'random' | 'ai',
         count: 20,
+        sourceType: sourceType as 'deck' | 'wrong_answers' | 'all' | 'video' | undefined,
+        sourceIds: sourceIds as { deckIds?: string[]; wrongQuizIds?: string[] } | undefined,
       });
 
-      const data = res.data.data as QuizDeck & { timeLimit?: number; expiresAt?: string; questions?: QuizQuestion[] };
+      const data = res.data.data as QuizDeck & { quizId?: string; timeLimit?: number; expiresAt?: string; questions?: QuizQuestion[] };
       const deckInfo = mode === 'deck' && deckId ? decks.find(d => d.id === deckId) : undefined;
 
       startQuiz({
-        quizId: data.id,
+        quizId: data.quizId ?? data.id,
         deckId: deckInfo?.id,
         deckName: deckInfo?.name,
-        mode,
+        mode: mode === 'wrong_answers' ? 'random' : mode as 'deck' | 'random' | 'ai',
+        sourceType: sourceType as 'deck' | 'wrong_answers' | 'all' | 'video' | undefined,
+        sourceIds: sourceIds as { deckIds?: string[]; wrongQuizIds?: string[] } | undefined,
         questions: data.questions ?? [],
         currentIndex: 0,
         timeLimit: data.timeLimit ?? 300,
@@ -800,14 +936,20 @@ export default function UserQuizPage() {
 
   // Save progress to backend (debounced)
   const saveProgressToBackend = useCallback(async () => {
-    if (!session || session.status !== 'taking') return;
+    if (!session || session.status !== 'taking' || !session.quizId) return;
     try {
       await quizService.saveProgress(session.quizId, {
         currentQuestion: session.currentIndex,
         answersJson: session.answers,
       });
-    } catch {
-      // Non-fatal
+    } catch (err: any) {
+      // If the session is invalid (not found or expired), clear it so the user
+      // doesn't get stuck in a broken state. Show a warning to the user.
+      const code = err?.response?.data?.error?.code;
+      if (code === 'NOT_FOUND' || code === 'QUIZ_EXPIRED') {
+        reset();
+        message.warning('Phiên quiz đã hết hạn. Tiến trình không được lưu tự động.');
+      }
     }
   }, [session]);
 
@@ -827,6 +969,20 @@ export default function UserQuizPage() {
   // Submit quiz
   const handleSubmitQuiz = useCallback(async () => {
     if (!session) return;
+
+    if (submitting) return;
+
+    // Client-side expiration check (only if expiresAt is valid)
+    if (session.expiresAt) {
+      const expiresAtMs = new Date(session.expiresAt).getTime();
+      if (isNaN(expiresAtMs)) {
+        // invalid expiresAt, skip check
+      } else if (Date.now() > expiresAtMs) {
+        message.error('Quiz đã hết hạn! Thời gian làm bài là 30 phút. Vui lòng làm lại.');
+        return;
+      }
+    }
+
     setSubmitting(true);
 
     try {
@@ -841,45 +997,103 @@ export default function UserQuizPage() {
         answers,
       });
 
-      setResult(res.data.data);
+      const resultData = res.data.data as QuizResult;
+
+      setSubmittedResult(resultData);
+      setLastQuizInfo({
+        quizId: session.quizId,
+        mode: session.mode,
+        deckId: session.deckId,
+        deckName: session.deckName,
+        sourceType: session.sourceType,
+        sourceIds: session.sourceIds,
+      });
       setScreen('result');
-      reset();
 
       // Reload stats
       try {
         const statsRes = await quizService.getStats();
         setStats(statsRes.data.data ?? null);
       } catch { /* non-fatal */ }
+
+      // Reload wrong answers data
+      try {
+        const waRes = await quizService.getWrongAnswers();
+        const waData = waRes.data.data;
+        if (waData && waData.totalUniqueWords >= 4) {
+          setWrongAnswersData({
+            totalWrongAnswers: waData.totalWrongAnswers,
+            totalUniqueWords: waData.totalUniqueWords,
+            quizIds: waData.groups.map((g: { quizId: string }) => g.quizId),
+          });
+        } else {
+          setWrongAnswersData(null);
+        }
+      } catch { /* non-fatal */ }
+
+      reset();
     } catch (err: any) {
-      const msg = err?.response?.data?.message ?? err?.message ?? 'Lỗi khi nộp bài';
-      message.error(msg);
+      const status = err?.response?.status;
+      const code = err?.response?.data?.error?.code;
+      const msg = err?.response?.data?.error?.message ?? err?.message;
+
+      if (code === 'QUIZ_EXPIRED') {
+        message.error('Quiz đã hết hạn! Thời gian làm bài là 30 phút. Vui lòng làm lại.');
+      } else if (code === 'ALREADY_COMPLETED') {
+        message.error('Quiz này đã được nộp rồi.');
+      } else if (code === 'NOT_FOUND') {
+        message.error('Quiz không tìm thấy. Vui lòng bắt đầu lại.');
+      } else if (code === 'INVALID_ANSWERS') {
+        message.error('Dữ liệu câu trả lời không hợp lệ.');
+      } else if (status === 401 || status === 403) {
+        message.error('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
+      } else {
+        message.error(msg || 'Lỗi khi nộp bài. Vui lòng thử lại.');
+      }
     } finally {
       setSubmitting(false);
     }
-  }, [session, setResult, reset]);
+  }, [session, reset]);
 
-  // Retry
+  // Retry — uses lastQuizInfo since session is reset after submit
   const handleRetry = useCallback(async () => {
-    if (!session) return;
+    if (!lastQuizInfo) return;
+    if (submitting) return;
     setSubmitting(true);
     try {
-      const res = await quizService.retryQuiz(session.quizId, { count: session.questions.length });
-      const data = res.data.data as QuizDeck & { questions?: QuizQuestion[]; timeLimit?: number; expiresAt?: string };
+      const res = await quizService.retryQuiz(lastQuizInfo.quizId, { count: 20 });
+      const data = res.data.data as QuizDeck & { quizId?: string; questions?: QuizQuestion[]; timeLimit?: number; expiresAt?: string };
 
-      startQuiz({
-        quizId: data.id,
-        deckId: session.deckId,
-        deckName: session.deckName,
-        mode: session.mode,
-        questions: data.questions ?? session.questions,
+      const newQuizId = data.quizId ?? data.id;
+      if (!newQuizId || !data.questions?.length) {
+        message.error('Không lấy được quiz mới. Vui lòng thử lại.');
+        return;
+      }
+
+      // Clear stale state before starting new quiz
+      reset();
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('kmate-quiz');
+      }
+
+      // Set pending session so useEffect triggers startQuiz cleanly
+      setPendingRetrySession({
+        quizId: newQuizId,
+        deckId: lastQuizInfo.deckId,
+        deckName: lastQuizInfo.deckName,
+        mode: lastQuizInfo.mode as 'deck' | 'random' | 'ai',
+        sourceType: lastQuizInfo.sourceType as 'deck' | 'wrong_answers' | 'all' | 'video' | undefined,
+        sourceIds: lastQuizInfo.sourceIds as { deckIds?: string[]; wrongQuizIds?: string[] } | undefined,
+        questions: data.questions ?? [],
         currentIndex: 0,
-        timeLimit: data.timeLimit ?? session.timeLimit,
-        expiresAt: data.expiresAt ?? session.expiresAt,
+        timeLimit: data.timeLimit ?? 300,
+        expiresAt: data.expiresAt ?? new Date(Date.now() + 3600000).toISOString(),
         startedAt: Date.now(),
-        answers: {},
-        questionTimes: {},
+        answers: {} as Record<string, string>,
+        questionTimes: {} as Record<string, number>,
       });
 
+      setSubmittedResult(null);
       setScreen('quiz');
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Lỗi khi làm lại';
@@ -887,13 +1101,17 @@ export default function UserQuizPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [session, startQuiz]);
+  }, [lastQuizInfo, submitting]);
 
   // Resume quiz from backend
   const handleResumeQuiz = useCallback(async () => {
-    if (!resumeModalQuizId) return;
-    setResumeModalVisible(false);
-    setLoading(true);
+    if (!resumeModalQuizId) {
+      message.error('Phiên quiz không hợp lệ. Vui lòng bắt đầu quiz mới.');
+      setResumeModalVisible(false);
+      return;
+    }
+    setResumeModalVisible(false); // Close modal immediately to prevent double-click
+    setResumeLoading(true);
     try {
       const res = await quizService.resumeQuiz(resumeModalQuizId);
       const data = res.data.data;
@@ -901,13 +1119,15 @@ export default function UserQuizPage() {
 
       resumeFromServer(data, matchedDeck?.name);
       setScreen('quiz');
+      setResumeModalQuizId(null); // Only clear on success
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Không thể khôi phục quiz';
       message.error(msg);
-      reset();
+      reset(); // Clear stale localStorage
+      setScreen('home');
+      // Leave resumeModalQuizId set so user can click "Bắt đầu mới"
     } finally {
-      setLoading(false);
-      setResumeModalQuizId(null);
+      setResumeLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resumeModalQuizId, decks]);
@@ -920,7 +1140,7 @@ export default function UserQuizPage() {
 
   // Exit quiz — save progress, go back to home
   const handleExitQuiz = useCallback(async () => {
-    if (session && session.status === 'taking') {
+    if (session && session.status === 'taking' && session.quizId) {
       setSubmitting(true);
       try {
         await quizService.pauseQuiz(session.quizId, {
@@ -963,7 +1183,7 @@ export default function UserQuizPage() {
           <Button key="new" onClick={handleDismissResume}>
             Bắt đầu mới
           </Button>,
-          <Button key="resume" type="primary" onClick={handleResumeQuiz} className="!font-bold !rounded-xl">
+          <Button key="resume" type="primary" onClick={handleResumeQuiz} loading={resumeLoading} className="!font-bold !rounded-xl">
             Tiếp tục
           </Button>,
         ]}
@@ -1004,13 +1224,21 @@ export default function UserQuizPage() {
             )}
           </div>
 
+          {/* Loading overlay during resume */}
+          {resumeLoading && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4" style={{ background: 'rgba(11,11,15,0.85)', backdropFilter: 'blur(4px)' }}>
+              <Spin size="large" />
+              <p className="text-slate-400 text-sm font-medium">Đang khôi phục quiz...</p>
+            </div>
+          )}
+
           {/* Content */}
           <div className="flex-1 overflow-y-auto">
             <div className="px-6 py-6">
-              {screen === 'result' ? (
-                <ResultScreen onRetry={handleRetry} onBack={() => { reset(); setScreen('home'); }} />
+              {screen === 'result' && submittedResult ? (
+                <ResultScreen result={submittedResult} onRetry={handleRetry} onBack={() => { reset(); setSubmittedResult(null); setScreen('home'); }} />
               ) : (
-                <QuizTakingScreen onBack={handleExitQuiz} />
+                <QuizTakingScreen onBack={handleExitQuiz} onSubmit={handleSubmitQuiz} />
               )}
             </div>
           </div>
@@ -1030,6 +1258,8 @@ export default function UserQuizPage() {
                 stats={stats}
                 loading={loading}
                 onStartQuiz={handleStartQuiz}
+                wrongAnswersData={wrongAnswersData ?? undefined}
+                loadingWrongAnswers={loadingWrongAnswers}
               />
             </motion.div>
           </AnimatePresence>

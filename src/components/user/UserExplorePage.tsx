@@ -58,9 +58,12 @@ export default function UserExplorePage() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [trending, setTrending] = useState<VideoSearchResult[]>([]);
   const [searchResults, setSearchResults] = useState<VideoSearchResult[]>([]);
-  const [searchQuery, setSearchQuery] = useState('korean learning');
+  const [searchQuery, setSearchQuery] = useState('Kpop 2026');
   const [loadingFeatured, setLoadingFeatured] = useState(true);
   const [loadingTrending, setLoadingTrending] = useState(true);
+  const [kpopVideos, setKpopVideos] = useState<VideoSearchResult[]>([]);
+  const [dramaClips, setDramaClips] = useState<VideoSearchResult[]>([]);
+  const [beginnerVideos, setBeginnerVideos] = useState<VideoSearchResult[]>([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [totalVideosWatched, setTotalVideosWatched] = useState(0);
   const [totalMinutes, setTotalMinutes] = useState(0);
@@ -87,6 +90,17 @@ export default function UserExplorePage() {
 
     loadTrending();
 
+    // Load predefined sections
+    videoService.discoverSearch({ q: 'Kpop 2026', limit: 6 })
+      .then((r) => setKpopVideos(r.data.data.videos))
+      .catch(() => {});
+    videoService.discoverSearch({ q: 'korean drama clips', limit: 6 })
+      .then((r) => setDramaClips(r.data.data.videos))
+      .catch(() => {});
+    videoService.discoverSearch({ q: 'korean beginner', limit: 6 })
+      .then((r) => setBeginnerVideos(r.data.data.videos))
+      .catch(() => {});
+
     // Load user stats for quick stats bar
     userService.getStatistics()
       .then((r) => {
@@ -97,7 +111,7 @@ export default function UserExplorePage() {
 
     // Initial search with loading toast
     const msgKey = message.loading({ content: 'Đang tải video...', duration: 0, key: 'explore-load' });
-    videoService.discoverSearch({ q: 'korean learning', limit: 8 })
+    videoService.discoverSearch({ q: 'Kpop 2026', limit: 8 })
       .then((r) => {
         setSearchResults(r.data.data.videos);
         message.success({ content: 'Đã tải xong!', key: 'explore-load' });
@@ -284,7 +298,7 @@ export default function UserExplorePage() {
             placeholder="Ngôn ngữ"
             allowClear
             className="!min-w-[150px]"
-            popupClassName="!bg-dark-400 !border !border-white/10"
+            classNames={{ popup: { root: '!bg-dark-400 !border !border-white/10' } }}
             options={[
               { value: 'any', label: 'Tất cả' },
               { value: 'ko', label: 'Tiếng Hàn' },
@@ -292,7 +306,7 @@ export default function UserExplorePage() {
             ]}
             onChange={(val) => {
               if (val) {
-                videoService.discoverSearch({ q: searchQuery || 'korean learning', language: val, limit: 8 })
+                videoService.discoverSearch({ q: searchQuery || 'Kpop 2026', language: val, limit: 8 })
                   .then((r) => setSearchResults(r.data.data.videos))
                   .catch(() => {});
               }
@@ -302,7 +316,7 @@ export default function UserExplorePage() {
             placeholder="Thời lượng"
             allowClear
             className="!min-w-[150px]"
-            popupClassName="!bg-dark-400 !border !border-white/10"
+            classNames={{ popup: { root: '!bg-dark-400 !border !border-white/10' } }}
             options={[
               { value: 'any', label: 'Tất cả' },
               { value: 'short', label: 'Ngắn (< 4 phút)' },
@@ -311,7 +325,7 @@ export default function UserExplorePage() {
             ]}
             onChange={(val) => {
               if (val) {
-                videoService.discoverSearch({ q: searchQuery || 'korean learning', duration: val, limit: 8 })
+                videoService.discoverSearch({ q: searchQuery || 'Kpop 2026', duration: val, limit: 8 })
                   .then((r) => setSearchResults(r.data.data.videos))
                   .catch(() => {});
               }
@@ -321,7 +335,7 @@ export default function UserExplorePage() {
             placeholder="Phụ đề"
             allowClear
             className="!min-w-[130px]"
-            popupClassName="!bg-dark-400 !border !border-white/10"
+            classNames={{ popup: { root: '!bg-dark-400 !border !border-white/10' } }}
             options={[
               { value: 'any', label: 'Tất cả' },
               { value: 'subtitled', label: 'Có phụ đề' },
@@ -329,7 +343,7 @@ export default function UserExplorePage() {
             ]}
             onChange={(val) => {
               if (val) {
-                videoService.discoverSearch({ q: searchQuery || 'korean learning', subtitleFilter: val, limit: 8 })
+                videoService.discoverSearch({ q: searchQuery || 'Kpop 2026', subtitleFilter: val, limit: 8 })
                   .then((r) => setSearchResults(r.data.data.videos))
                   .catch(() => {});
               }
@@ -427,6 +441,138 @@ export default function UserExplorePage() {
                     <div className="absolute bottom-3 left-3 flex items-center gap-2">
                       <span className="px-2 py-1 rounded-lg bg-white/20 backdrop-blur-md text-white text-[10px] font-bold uppercase">
                         {video.language === 'ko' ? '🇰🇷 Hàn' : '🌐 Phổ biến'}
+                      </span>
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
+                        <PlayCircleOutlined style={{ color: '#0B0B0F', fontSize: 22 }} />
+                      </div>
+                    </div>
+                  </div>
+                  <h4 className="text-white font-bold text-sm leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                    {video.title}
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1">{formatViewCount(video.viewCount)}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* KPOP Videos Section */}
+        {kpopVideos.length > 0 && (
+          <section className="mb-16">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-1 h-8 bg-gradient-to-b from-pink-400 to-rose-500 rounded-full" />
+                <h3 className="text-2xl font-black text-white">Các video Kpop nổi bật</h3>
+              </div>
+            </div>
+            <div className="flex gap-6 overflow-x-auto pb-4 custom-scrollbar">
+              {kpopVideos.map((video) => (
+                <div
+                  key={video.youtubeId}
+                  className="min-w-[280px] group cursor-pointer shrink-0"
+                  onClick={() => handleVideoClick(video)}
+                >
+                  <div className="relative aspect-[16/10] rounded-2xl overflow-hidden mb-3">
+                    <img
+                      alt={video.title}
+                      src={video.thumbnail}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-all" />
+                    <div className="absolute bottom-3 left-3 flex items-center gap-2">
+                      <span className="px-2 py-1 rounded-lg bg-white/20 backdrop-blur-md text-white text-[10px] font-bold uppercase">
+                        Kpop
+                      </span>
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
+                        <PlayCircleOutlined style={{ color: '#0B0B0F', fontSize: 22 }} />
+                      </div>
+                    </div>
+                  </div>
+                  <h4 className="text-white font-bold text-sm leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                    {video.title}
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1">{formatViewCount(video.viewCount)}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Drama Clips Section */}
+        {dramaClips.length > 0 && (
+          <section className="mb-16">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-1 h-8 bg-gradient-to-b from-red-400 to-orange-500 rounded-full" />
+                <h3 className="text-2xl font-black text-white">Các đoạn cắt phim hàn nổi tiếng</h3>
+              </div>
+            </div>
+            <div className="flex gap-6 overflow-x-auto pb-4 custom-scrollbar">
+              {dramaClips.map((video) => (
+                <div
+                  key={video.youtubeId}
+                  className="min-w-[280px] group cursor-pointer shrink-0"
+                  onClick={() => handleVideoClick(video)}
+                >
+                  <div className="relative aspect-[16/10] rounded-2xl overflow-hidden mb-3">
+                    <img
+                      alt={video.title}
+                      src={video.thumbnail}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-all" />
+                    <div className="absolute bottom-3 left-3 flex items-center gap-2">
+                      <span className="px-2 py-1 rounded-lg bg-white/20 backdrop-blur-md text-white text-[10px] font-bold uppercase">
+                        Drama
+                      </span>
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
+                        <PlayCircleOutlined style={{ color: '#0B0B0F', fontSize: 22 }} />
+                      </div>
+                    </div>
+                  </div>
+                  <h4 className="text-white font-bold text-sm leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                    {video.title}
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1">{formatViewCount(video.viewCount)}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Beginner Section */}
+        {beginnerVideos.length > 0 && (
+          <section className="mb-16">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-1 h-8 bg-gradient-to-b from-green-400 to-emerald-500 rounded-full" />
+                <h3 className="text-2xl font-black text-white">Bắt đầu cho người mới</h3>
+              </div>
+            </div>
+            <div className="flex gap-6 overflow-x-auto pb-4 custom-scrollbar">
+              {beginnerVideos.map((video) => (
+                <div
+                  key={video.youtubeId}
+                  className="min-w-[280px] group cursor-pointer shrink-0"
+                  onClick={() => handleVideoClick(video)}
+                >
+                  <div className="relative aspect-[16/10] rounded-2xl overflow-hidden mb-3">
+                    <img
+                      alt={video.title}
+                      src={video.thumbnail}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-all" />
+                    <div className="absolute bottom-3 left-3 flex items-center gap-2">
+                      <span className="px-2 py-1 rounded-lg bg-white/20 backdrop-blur-md text-white text-[10px] font-bold uppercase">
+                        Sơ cấp
                       </span>
                     </div>
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">

@@ -85,11 +85,9 @@ export default function LearningPlayerPage() {
   const [flashcardModalOpen, setFlashcardModalOpen] = useState(false);
   const [selectedVocabIds, setSelectedVocabIds] = useState<string[]>([]);
 
-  // Current subtitle segment words — shown in vocabulary panel
-  const [currentSegmentWords, setCurrentSegmentWords] = useState<any[]>([]);
-  const lastSegmentWordsKeyRef = useRef<string>('');
-  // Stable ref to current segment — updated via store subscription, avoids useCallback dependency churn
+  // Stable ref to current segment — used by handleWordClick to get context for lookup API
   const currentSegmentRef = useRef<typeof currentSegment>(null);
+
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -281,7 +279,7 @@ export default function LearningPlayerPage() {
       message.success('Đã lưu từ vựng!');
       setSelectedWord(null);
     } catch (err: any) {
-      const msg = err?.response?.data?.message ?? err?.message ?? 'Loi khi luu tu vung';
+          const msg = err?.response?.data?.message ?? err?.message ?? 'Loi khi luu tu vung';
       message.error(msg);
     } finally {
       setSavingWord(false);
@@ -305,7 +303,7 @@ export default function LearningPlayerPage() {
     try {
       await flashcardService.createFlashcard({
         word: vocabItem.word,
-        meaning: vocabItem.meaning,
+        meaning: vocabItem.meaning || vocabItem.contextTranslation || vocabItem.word,
         pronunciation: vocabItem.reading,
         exampleSentence: vocabItem.context,
         exampleTranslation: vocabItem.contextTranslation,
@@ -314,7 +312,7 @@ export default function LearningPlayerPage() {
       });
       message.success('Đã thêm vào bộ flashcard!');
     } catch (err: any) {
-      const msg = err?.response?.data?.message ?? err?.response?.data?.error?.message ?? 'Loi khi tao flashcard';
+          const msg = err?.response?.data?.message ?? err?.response?.data?.error?.message ?? 'Loi khi tao flashcard';
       message.error(msg);
     } finally {
       setAddingToFlashcard(null);
@@ -395,7 +393,7 @@ export default function LearningPlayerPage() {
           return;
         }
       }
-      const msg = err?.response?.data?.error?.message ?? err?.message ?? 'Lỗi khi trích xuất';
+          const msg = err?.response?.data?.error?.message ?? err?.message ?? 'Lỗi khi trích xuất';
       message.error(msg);
       setVocabExtracting(false);
     }
@@ -462,55 +460,6 @@ export default function LearningPlayerPage() {
     }
   }, [subtitleGenerated, segments.length, loadVocabWords]);
 
-  // ── Build currentSegmentWords from the active subtitle segment (updated on every currentTime change) ──
-  // Uses the same binary-search algorithm as useSubtitleSync so vocabulary extraction
-  // always targets the SAME segment the subtitle overlay is showing.
-  useEffect(() => {
-    if (!segments.length) {
-      setCurrentSegmentWords([]);
-      return;
-    }
-
-    // Binary search: find the rightmost segment where startTime <= currentTime.
-    // This matches the logic in useSubtitleSync's binarySearchSegment.
-    let lo = 0, hi = segments.length - 1;
-    let result: (typeof segments)[0] | null = null;
-    while (lo <= hi) {
-      const mid = Math.floor((lo + hi) / 2);
-      const s = segments[mid];
-      if (currentTime >= s.startTime) {
-        result = s;   // candidate — keep searching right for a later one
-        lo = mid + 1;
-      } else {
-        hi = mid - 1;
-      }
-    }
-
-    if (!result || !result.text) {
-      setCurrentSegmentWords([]);
-      lastSegmentWordsKeyRef.current = '';
-      return;
-    }
-    // Extract individual Korean words from the segment text
-    const words = result.text.split(/\s+/).filter((w: string) => /[\uAC00-\uD7AF]/.test(w));
-    const wordsKey = words.slice(0, 5).join('|');
-
-    // Skip state update if the word list hasn't changed, preventing unnecessary re-renders
-    if (wordsKey === lastSegmentWordsKeyRef.current) return;
-    lastSegmentWordsKeyRef.current = wordsKey;
-
-    const mapped = words.slice(0, 5).map((w: string, i: number) => ({
-      id: `seg-${result!.id}-${i}`,
-      word: w,
-      meaning: result!.translation || '',
-      romanization: '',
-      difficulty: 'medium',
-      example: result!.text,
-      exampleTranslation: result!.translation || '',
-    }));
-    setCurrentSegmentWords(mapped);
-  }, [segments, currentTime]);
-
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
@@ -533,7 +482,8 @@ export default function LearningPlayerPage() {
     .map((item) => ({
       id: item.id,
       word: item.word,
-      meaning: item.meaning || item.contextTranslation || '',
+      meaning: item.meaning || '',
+      vietnameseMeaning: item.contextTranslation || '',
       romanization: item.reading || '',
       difficulty: 'medium',
       example: item.context || '',
@@ -705,15 +655,6 @@ export default function LearningPlayerPage() {
 
         {/* Sidebar — AI Vocabulary Panel */}
         <aside className="w-80 flex-shrink-0 hidden md:flex flex-col">
-          {/* Current segment info */}
-          {currentSegment && (
-            <div className="p-4 border-b border-dark-200 bg-dark-300">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-primary mb-2">Đoạn hiện tại</p>
-              <p className="text-white text-sm font-medium mb-1">{currentSegment.text}</p>
-              <p className="text-slate-400 text-xs">{currentSegment.translation}</p>
-            </div>
-          )}
-
           {/* Chapters */}
           {video?.chapters && video.chapters.length > 0 && (
             <div className="p-4 border-b border-dark-200 bg-dark-300">
@@ -738,7 +679,6 @@ export default function LearningPlayerPage() {
             <VocabularyPanel
               videoId={videoId}
               videoTitle={video?.title ?? ''}
-              currentSegmentWords={currentSegmentWords}
               savedVocabItems={savedVocabItems}
               initialWords={vocabWords.map((w: any) => ({
                 id: w.id,
@@ -847,14 +787,27 @@ export default function LearningPlayerPage() {
         open={flashcardModalOpen}
         videoId={videoId}
         videoTitle={video?.title ?? ''}
-        words={[...currentSegmentWords, ...savedVocabItems, ...vocabWords.map((w: any) => ({
-          id: w.id,
-          word: w.word,
-          meaning: w.meaning ?? '',
-          romanization: w.pronunciation ?? '',
-          example: w.exampleSentence,
-          exampleTranslation: '',
-        }))]}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        words={(() => {
+          const all: any[] = [
+            ...savedVocabItems,
+            ...vocabWords.map((w: any) => ({
+              id: w.id,
+              word: w.word,
+              meaning: w.meaning ?? '',
+              vietnameseMeaning: w.translation ?? w.vietnameseMeaning ?? '',
+              romanization: w.pronunciation ?? '',
+              example: w.exampleSentence,
+              exampleTranslation: w.exampleTranslation ?? '',
+            })),
+          ];
+          const seen = new Set<string>();
+          return all.filter((w: any) => {
+            if (seen.has(w.word)) return false;
+            seen.add(w.word);
+            return true;
+          });
+        })()}
         onClose={() => setFlashcardModalOpen(false)}
         onCreated={() => setFlashcardModalOpen(false)}
       />

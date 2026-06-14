@@ -53,9 +53,12 @@ export default function UserNotificationsPage() {
     setMarkingId(id);
     try {
       await notificationService.markOneAsRead(id);
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, isRead: true, readAt: new Date().toISOString() as unknown as string } : n))
-      );
+      setNotifications((prev) => {
+        const next = prev.map((n) => (n.id === id ? { ...n, isRead: true, readAt: new Date().toISOString() } : n));
+        const newCount = next.filter((n) => !n.isRead).length;
+        window.dispatchEvent(new CustomEvent('notifications:read-changed', { detail: { count: newCount } }));
+        return next;
+      });
     } catch {
       // silent
     } finally {
@@ -66,7 +69,9 @@ export default function UserNotificationsPage() {
   const handleMarkAllRead = async () => {
     try {
       await notificationService.markAsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true, readAt: new Date().toISOString() as unknown as string })));
+      const marked = notifications.map((n) => ({ ...n, isRead: true, readAt: n.readAt ?? new Date().toISOString() }));
+      setNotifications(marked);
+      window.dispatchEvent(new CustomEvent('notifications:read-changed', { detail: { count: 0 } }));
     } catch {
       // silent
     }

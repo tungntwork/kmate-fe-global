@@ -64,7 +64,7 @@ export default function AdminLoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <Image src={imgKMATELOGO} alt="K-MATE" width={120} height={30} className="object-contain" />
+            <Image src={imgKMATELOGO} alt="K-MATE" width={120} height={30} className="object-contain" style={{ width: 'auto' }} />
             <span className="text-[10px] font-bold px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/30 tracking-widest">
               ADMIN PANEL
             </span>

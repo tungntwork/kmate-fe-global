@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  Avatar, Tag, Button, Spin, message, Descriptions, Tabs, Card,
-  Modal, InputNumber, Form, Select, notification,
+  Avatar, Tag, Button, Spin, Descriptions, Tabs, Card,
+  Modal, InputNumber, Form, Select, message, notification,
 } from 'antd';
 import {
   ArrowLeftOutlined, StopOutlined, CheckCircleOutlined,
@@ -24,8 +24,6 @@ export default function AdminUserDetailPage() {
   const [packages, setPackages] = useState<CoinPackage[]>([]);
   const [form] = Form.useForm();
   const [selectedMode, setSelectedMode] = useState<'preset' | 'custom'>('preset');
-  const notificationRef = useRef<ReturnType<typeof notification.open> | null>(null);
-
   const fetchUser = () => {
     const id = params.id as string;
     adminService.getUser(id)

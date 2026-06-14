@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, App } from 'antd';
 import { QueryProvider } from '@/lib/query-provider';
 import { SocketProvider } from '@/lib/socket-provider';
 import '@/styles/globals.css';
@@ -36,7 +36,9 @@ export default function RootLayout({
           <ConfigProvider theme={theme}>
             <QueryProvider>
               <SocketProvider>
-                {children}
+                <App>
+                  {children}
+                </App>
               </SocketProvider>
             </QueryProvider>
           </ConfigProvider>

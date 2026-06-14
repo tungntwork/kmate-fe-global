@@ -37,7 +37,7 @@ export default function UserDashboardPage() {
     ]).then(([statsRes, historyRes, dueRes]) => {
       if (statsRes) setStats(statsRes.data.data);
       if (historyRes) setHistory(historyRes.data.data);
-      if (dueRes) setDueCards(dueRes.data.data);
+      if (dueRes) setDueCards(dueRes.data.data.flashcards);
     }).finally(() => setLoading(false));
   }, []);
 

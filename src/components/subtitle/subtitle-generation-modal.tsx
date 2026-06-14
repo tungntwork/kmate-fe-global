@@ -139,11 +139,11 @@ export function SubtitleGenerationModal({
         <div className="text-center py-8">
           <Spin size="large" />
           <Text className="block mt-4">
-            {s === 'requesting' ? 'Processing request...' : 'Job queued — waiting for processing...'}
+            {s === 'requesting' ? 'Đang xử lý yêu cầu...' : 'K-Mate đang xử lý video...'}
           </Text>
           {s === 'queued' && (
             <Text type="secondary" className="block mt-1 text-sm">
-              This usually takes a few seconds
+              Thường mất 30s - 2 phút
             </Text>
           )}
         </div>
@@ -158,20 +158,20 @@ export function SubtitleGenerationModal({
         <Result
           status="success"
           icon={<CheckCircleOutlined className="text-green-500" />}
-          title="Subtitles ready!"
+          title="Phụ đề đã sẵn sàng!"
           subTitle={
             segmentCount > 0
-              ? `${segmentCount} segments generated`
-              : 'Subtitles have been loaded'
+              ? `Đã tạo ${segmentCount} đoạn phụ đề`
+              : 'Phụ đề đã được tải'
           }
           extra={
             <Space direction="vertical" className="w-full">
               <Button type="primary" size="large" onClick={onClose}>
-                Watch Now
+                Xem ngay
               </Button>
               {url && (
                 <Button variant="text" size="small" onClick={() => window.open(url, '_blank')}>
-                  Download subtitles
+                  Tải phụ đề
                 </Button>
               )}
             </Space>
@@ -187,15 +187,15 @@ export function SubtitleGenerationModal({
         <Result
           status="error"
           icon={<CloseCircleOutlined className="text-red-500" />}
-          title="Subtitle generation failed"
+          title="Tạo phụ đề thất bại"
           subTitle={
             isRetryable
-              ? `${failedError} — will retry automatically`
+              ? `${failedError} — sẽ thử lại tự động`
               : failedError
           }
           extra={
             isRetryable ? (
-              <Text type="secondary">Please wait while we retry...</Text>
+              <Text type="secondary">Vui lòng đợi trong giây lát...</Text>
             ) : (
               <Space direction="vertical" className="w-full">
                 <Button
@@ -204,10 +204,10 @@ export function SubtitleGenerationModal({
                   onClick={handleRequest}
                   loading={requestMutation.isPending}
                 >
-                  Try Again
+                  Thử lại
                 </Button>
                 <Button variant="text" onClick={onClose}>
-                  Cancel
+                  Hủy
                 </Button>
               </Space>
             )
@@ -239,17 +239,17 @@ export function SubtitleGenerationModal({
           <Text strong className="text-lg">{stageText}</Text>
           <Text className="block text-gray-500 mt-1 text-sm">
             {displayPercent > 0
-              ? `${displayPercent.toFixed(0)}% complete`
+              ? `Đã xong ${displayPercent.toFixed(0)}%`
               : jobStatus
-              ? 'Processing...'
-              : 'Waiting in queue...'}
+              ? 'Đang xử lý...'
+              : 'Đang chờ trong hàng đợi...'}
             {jobStatus?.retryCount && jobStatus.retryCount > 0
-              ? ` — retry ${jobStatus.retryCount}/3`
+              ? ` — đang thử lại ${jobStatus.retryCount}/3`
               : ''}
           </Text>
           {!isConnected && (
             <Text type="warning" className="block mt-2 text-xs">
-              Real-time updates unavailable — reconnecting...
+              Không thể cập nhật thời gian thực — đang kết nối lại...
             </Text>
           )}
           {/* Watch while processing CTA */}
@@ -271,7 +271,7 @@ export function SubtitleGenerationModal({
               disabled={!resolvedJobId}
               className="text-sky-400 hover:text-sky-300 text-sm"
             >
-              Watch short videos while processing
+              Xem video ngắn trong lúc chờ
             </Button>
           </div>
         </div>
@@ -284,7 +284,7 @@ export function SubtitleGenerationModal({
       open={open}
       onCancel={onClose}
       footer={null}
-      title="AI Subtitle Generation"
+      title="Tạo phụ đề AI"
       width={420}
       centered
       maskClosable={status() !== 'processing'}

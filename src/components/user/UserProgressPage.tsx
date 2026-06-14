@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Spin } from 'antd';
+import { Button, Spin, Tooltip } from 'antd';
+import ReportModal from './ReportModal';
 import {
   FireOutlined,
   ThunderboltOutlined,
@@ -13,6 +14,9 @@ import {
   AimOutlined,
   PlaySquareOutlined,
   BulbOutlined,
+  ReloadOutlined,
+  CheckCircleOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { userService, type UserStatistics, type UserAchievement } from '@/lib/api-services';
@@ -76,7 +80,11 @@ function WeeklyChart({ stats }: { stats: UserStatistics | null }) {
     };
   });
 
-  const labels = ['Videos', 'FC Rev', 'Minutes', 'Words', 'Quizzes', 'Streak', 'Best'];
+  const labels = ['Video', 'FC', 'Phút', 'Từ tra', 'Quiz', 'Ngày', 'Kỷ lục'];
+  const labelTooltips = [
+    'Video đã xem', 'Lần ôn flashcard', 'Phút học',
+    'Từ tra cứu', 'Quiz đã làm', 'Ngày liên tiếp', 'Ngày kỷ lục',
+  ];
 
   return (
     <div className="relative w-full overflow-hidden">
@@ -101,9 +109,11 @@ function WeeklyChart({ stats }: { stats: UserStatistics | null }) {
           const stepX = weeklyData.length > 1 ? w / (weeklyData.length - 1) : 0;
           const x = PADDING.left + i * stepX;
           return (
-            <text key={i} x={x} y={CHART_HEIGHT - 4} textAnchor="middle" fill="#64748b" fontSize="10" fontWeight="bold" className="uppercase">
-              {labels[i]}
-            </text>
+            <Tooltip key={i} title={labelTooltips[i]} placement="top">
+              <text x={x} y={CHART_HEIGHT - 4} textAnchor="middle" fill="#64748b" fontSize="10" fontWeight="bold" className="uppercase cursor-default select-none">
+                {labels[i]}
+              </text>
+            </Tooltip>
           );
         })}
       </svg>
@@ -159,8 +169,15 @@ function AchievementCard({ achievement, index }: { achievement: UserAchievement;
       className="flex items-center gap-4 rounded-2xl user-glass-card p-4 border-l-4"
       style={{ borderLeftColor: color }}
     >
-      <div className="flex h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: color + '20', color }}>
+      <div className="relative flex h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: color + '20', color }}>
         <StarOutlined style={{ fontSize: 20 }} />
+        {achievement.isUnlocked ? (
+          <CheckCircleOutlined
+            style={{ position: 'absolute', bottom: -2, right: -2, color: '#22c55e', fontSize: 14, background: '#0B0B0F', borderRadius: '50%' }}
+          />
+        ) : (
+          <LockOutlined style={{ position: 'absolute', bottom: -2, right: -2, color: '#64748b', fontSize: 12, background: '#0B0B0F', borderRadius: '50%' }} />
+        )}
       </div>
       <div>
         <h4 className="text-sm font-bold text-white">{achievement.name}</h4>
@@ -179,8 +196,12 @@ export default function UserProgressPage() {
   const [stats, setStats] = useState<UserStatistics | null>(null);
   const [achievements, setAchievements] = useState<UserAchievement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [achievementsExpanded, setAchievementsExpanded] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
+  const loadData = () => {
+    setLoading(true);
     Promise.all([
       userService.getStatistics().catch(() => null),
       userService.getAchievements().catch(() => null),
@@ -188,6 +209,10 @@ export default function UserProgressPage() {
       if (statsRes) setStats(statsRes.data.data);
       if (achievementsRes) setAchievements(achievementsRes.data.data);
     }).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   if (loading) {
@@ -275,6 +300,7 @@ export default function UserProgressPage() {
           <Button
             type="primary"
             icon={<BarChartOutlined />}
+            onClick={() => setReportOpen(true)}
             className="!font-bold !rounded-xl !text-sm !flex !items-center !gap-2"
           >
             Tạo Báo cáo
@@ -300,8 +326,16 @@ export default function UserProgressPage() {
           <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/5 blur-3xl pointer-events-none" />
           <div className="mb-5 flex items-center justify-between">
             <h3 className="text-lg font-bold text-white">Tổng quan hoạt động</h3>
+            <Tooltip title="Làm mới">
+              <Button
+                size="small"
+                icon={<ReloadOutlined />}
+                onClick={loadData}
+                className="!bg-white/5 !text-slate-400 !border-white/10 !rounded-lg hover:!bg-white/10 !flex !items-center"
+              />
+            </Tooltip>
           </div>
-          <WeeklyChart stats={stats} />
+          <WeeklyChart stats={stats} key={refreshKey} />
         </motion.div>
 
         <div className="flex flex-col gap-6">
@@ -318,20 +352,20 @@ export default function UserProgressPage() {
                   <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-white uppercase tracking-tight">Từ vựng</h3>
+              <h3 className="text-lg font-bold text-white uppercase tracking-tight">Lần ôn flashcard</h3>
             </div>
             <div className="mb-3 flex items-end justify-between">
-              <span className="text-4xl font-black text-white">{stats?.totalWordsLookedUp ?? 0}</span>
-              <span className="text-sm font-medium text-slate-400">Từ đã tra</span>
+              <span className="text-4xl font-black text-white">{stats?.totalFlashcardReviews ?? 0}</span>
+              <span className="text-sm font-medium text-slate-400">Lần ôn</span>
             </div>
             <div className="h-2 w-full rounded-full bg-white/5 mb-4 overflow-hidden">
               <div className="h-full rounded-full"
-                style={{ width: `${Math.min((stats?.totalWordsLookedUp ?? 0) / 5, 100)}%`, background: 'linear-gradient(90deg, #00e5ff, #7c4dff)' }} />
+                style={{ width: `${Math.min((stats?.totalFlashcardReviews ?? 0) / 5, 100)}%`, background: 'linear-gradient(90deg, #00e5ff, #7c4dff)' }} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-xl bg-white/5 p-3">
-                <p className="text-[10px] font-bold text-slate-500 uppercase">Flashcard</p>
-                <p className="text-lg font-bold text-white">{stats?.totalFlashcardReviews ?? 0}</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Tổng thẻ</p>
+                <p className="text-lg font-bold text-white">{stats?.totalFlashcards ?? 0}</p>
               </div>
               <div className="rounded-xl bg-white/5 p-3">
                 <p className="text-[10px] font-bold text-slate-500 uppercase">Quiz</p>
@@ -368,14 +402,17 @@ export default function UserProgressPage() {
             Thành tựu{' '}
             <span className="text-secondary tracking-widest uppercase text-lg font-bold">Đã đạt được</span>
           </h3>
-          <button className="text-sm font-bold text-primary hover:underline !bg-transparent border-0 cursor-pointer">
-            Xem tất cả
+          <button
+            onClick={() => setAchievementsExpanded(e => !e)}
+            className="text-sm font-bold text-primary hover:underline !bg-transparent border-0 cursor-pointer"
+          >
+            {achievementsExpanded ? 'Thu gọn' : 'Xem tất cả'}
           </button>
         </div>
 
         {achievements.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {achievements.slice(0, 6).map((a, i) => (
+            {achievements.slice(0, achievementsExpanded ? undefined : 6).map((a, i) => (
               <AchievementCard key={a.id} achievement={a} index={i} />
             ))}
           </div>
@@ -389,6 +426,13 @@ export default function UserProgressPage() {
 
       <div className="pointer-events-none fixed -bottom-20 -right-20 h-[500px] w-[500px] rounded-full bg-primary/5 blur-[120px]" />
       <div className="pointer-events-none fixed -top-20 -left-20 h-[500px] w-[500px] rounded-full bg-secondary/5 blur-[120px]" />
+
+      <ReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        stats={stats}
+        achievements={achievements}
+      />
     </div>
   );
 }

@@ -13,6 +13,8 @@ interface FlashcardWord {
   partOfSpeech?: string;
   example?: string;
   exampleTranslation?: string;
+  /** Vietnamese meaning from the segment-level translation — shown side-by-side with English meaning */
+  vietnameseMeaning?: string;
 }
 
 interface FlashcardCreateModalProps {
@@ -130,6 +132,16 @@ export function FlashcardCreateModal({
         (w) => !localSelected.some((l) => l.id === w.id),
       );
 
+      // Deduplicate by word text to prevent 409 conflicts when the same Korean word
+      // appears across multiple segments (each gets a different ID prefix, e.g. seg-${id1}-0 vs seg-${id2}-0)
+      const seenWords = new Set<string>();
+      const uniqueLocal = localSelected.filter((item) => {
+        const normalized = item.word.trim();
+        if (seenWords.has(normalized)) return false;
+        seenWords.add(normalized);
+        return true;
+      });
+
       let createdCount = 0;
 
       if (serverSelected.length > 0) {
@@ -141,7 +153,7 @@ export function FlashcardCreateModal({
         createdCount += serverSelected.length;
       }
 
-      for (const item of localSelected) {
+      for (const item of uniqueLocal) {
         await flashcardService.createFlashcard({
           word: item.word,
           meaning: item.meaning,
@@ -237,18 +249,19 @@ export function FlashcardCreateModal({
                   <button
                     key={w.id}
                     onClick={() => toggleWord(w.id)}
-                    className="flex items-center gap-1 text-xs px-2 py-1 rounded border transition-colors cursor-pointer"
+                    className="flex flex-col items-start gap-0.5 text-xs px-2 py-1.5 rounded border transition-colors cursor-pointer min-w-[80px]"
                     style={{
                       fontFamily: 'Noto Sans KR, sans-serif',
                       backgroundColor: isSelected ? 'rgba(124,77,255,0.15)' : '#0f1623',
                       borderColor: isSelected ? '#7C4DFF' : 'rgba(255,255,255,0.1)',
-                      color: isSelected ? '#fff' : '#6b7280',
+                      color: isSelected ? '#fff' : '#9ca3af',
                     }}
                   >
-                    {isSelected && (
-                      <CheckOutlined className="text-primary-400" style={{ fontSize: 9 }} />
+                    <span className="self-stretch text-center text-sm">{w.word}</span>
+                    <span className="self-stretch text-center text-gray-400 text-[10px] leading-tight">{w.meaning || w.vietnameseMeaning}</span>
+                    {w.meaning && w.vietnameseMeaning && w.meaning !== w.vietnameseMeaning && (
+                      <span className="self-stretch text-center text-yellow-300/70 text-[10px] leading-tight">{w.vietnameseMeaning}</span>
                     )}
-                    {w.word}
                   </button>
                 );
               })}
@@ -317,7 +330,7 @@ export function FlashcardCreateModal({
                 placeholder="Chọn deck..."
                 className="w-full"
                 options={decks.map((d) => ({ value: d.id, label: d.name }))}
-                popupClassName="kmate-dark-select"
+                classNames={{ popup: { root: 'kmate-dark-select' } }}
                 style={{ width: '100%' }}
               />
             </div>
@@ -333,7 +346,7 @@ export function FlashcardCreateModal({
             disabled={selectedIds.size === 0}
             className="!bg-primary-500 !border-primary-500 !mt-2 !rounded-lg !h-12 !text-base !font-semibold"
           >
-            Tạo {selectedIds.size} Flashcard
+            Tạo bộ flashcard
           </Button>
         </div>
       </div>

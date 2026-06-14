@@ -11,7 +11,7 @@ import {
   EditOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
-import { Card, Avatar, Button, Input, Tag, Spin, message, Switch, Divider } from 'antd';
+import { Card, Avatar, Button, Input, Tag, Spin, Switch, Divider, message } from 'antd';
 import { userService, authService, type UserProfile, type UserStatistics, type UserAchievement } from '@/lib/api-services';
 import { useAuthStore } from '@/store/auth.store';
 import dayjs from 'dayjs';

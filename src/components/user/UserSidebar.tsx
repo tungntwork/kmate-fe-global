@@ -63,7 +63,7 @@ export function UserSidebar() {
           {collapsed ? (
             <Image src={imgKMATEICO} alt="K-MATE" width={32} height={32} className="object-contain" />
           ) : (
-            <Image src={imgKMATELOGO} alt="K-MATE" width={120} height={40} className="object-contain" />
+            <Image src={imgKMATELOGO} alt="K-MATE" width={120} height={40} className="object-contain" style={{ width: 'auto' }} />
           )}
         </Link>
       </div>

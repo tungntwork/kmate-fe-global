@@ -43,6 +43,8 @@ export interface QuizSession {
   deckId?: string;
   deckName?: string;
   mode: 'deck' | 'random' | 'ai';
+  sourceType?: 'deck' | 'wrong_answers' | 'all' | 'video';
+  sourceIds?: { deckIds?: string[]; wrongQuizIds?: string[] };
   questions: QuizQuestion[];
   currentIndex: number;
   answers: Record<string, string>; // questionId → selected option id
@@ -68,12 +70,15 @@ interface QuizStore {
   setLoading: () => void;
   resumeFromServer: (data: {
     quizId: string;
+    deckId?: string | null;
     currentQuestion: number;
     answersJson: Record<string, string>;
     questions: QuizQuestion[];
     expiresAt: string;
     startedAt: string;
     timeLimit: number;
+    mode?: 'deck' | 'random' | 'ai';
+    sourceType?: 'deck' | 'wrong_answers' | 'all' | 'video';
   }, deckName?: string) => void;
   reset: () => void;
 }
@@ -151,14 +156,22 @@ export const useQuizStore = create<QuizStore>()(
       },
 
       resumeFromServer: (data, deckName) => {
+        // Clear stale persisted state first to prevent Zustand persist from overwriting
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('kmate-quiz');
+        }
         set({
           session: {
             quizId: data.quizId,
+            deckId: data.deckId ?? undefined,
             deckName: deckName,
-            mode: 'deck',
+            mode: (data.mode as 'deck' | 'random' | 'ai') ?? 'deck',
+            sourceType: (data.sourceType as 'deck' | 'wrong_answers' | 'all' | 'video') ?? undefined,
             questions: data.questions,
             currentIndex: data.currentQuestion,
-            answers: data.answersJson,
+            answers: typeof data.answersJson === 'string'
+              ? (() => { try { return JSON.parse(data.answersJson); } catch { return {}; } })()
+              : (data.answersJson ?? {}),
             questionTimes: {},
             startedAt: data.startedAt ? new Date(data.startedAt).getTime() : Date.now(),
             timeLimit: data.timeLimit,
@@ -174,12 +187,17 @@ export const useQuizStore = create<QuizStore>()(
     }),
     {
       name: 'kmate-quiz',
+      onRehydrateStorage: () => (state) => {
+        // Rehydrating from localStorage
+      },
       partialize: (state) => ({
         session: state.session ? {
           quizId: state.session.quizId,
           deckId: state.session.deckId,
           deckName: state.session.deckName,
           mode: state.session.mode,
+          sourceType: state.session.sourceType,
+          sourceIds: state.session.sourceIds,
           questions: state.session.questions,
           currentIndex: state.session.currentIndex,
           answers: state.session.answers,

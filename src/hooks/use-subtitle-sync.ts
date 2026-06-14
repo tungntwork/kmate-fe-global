@@ -28,22 +28,13 @@ export function useSubtitleSync(options: UseSubtitleSyncOptions = {}) {
 
   const { currentTime, playerRef, settings } = usePlayerStore();
 
+  const lastSegmentIdRef = useRef<string | null>(null);
   const lastUpdateRef = useRef<number>(0);
-  const segmentCacheRef = useRef<Map<number, SubtitleSegment>>(new Map());
 
-  // Binary search for O(log n) segment lookup
+  // Binary search for O(log n) segment lookup — runs synchronously on every render
   const binarySearchSegment = useCallback((time: number): { segment: SubtitleSegment | null; index: number } => {
     if (!segments.length) {
       return { segment: null, index: -1 };
-    }
-
-    // Check cache first
-    const cached = segmentCacheRef.current.get(Math.floor(time));
-    if (cached) {
-      const index = segments.findIndex(s => s.id === cached.id);
-      if (index !== -1) {
-        return { segment: cached, index };
-      }
     }
 
     let left = 0;
@@ -68,22 +59,12 @@ export function useSubtitleSync(options: UseSubtitleSyncOptions = {}) {
       }
     }
 
-    if (result) {
-      segmentCacheRef.current.set(Math.floor(time), result);
-      // Keep cache size manageable
-      if (segmentCacheRef.current.size > 100) {
-        const firstKey = segmentCacheRef.current.keys().next().value;
-        if (firstKey !== undefined) {
-          segmentCacheRef.current.delete(firstKey);
-        }
-      }
-    }
-
     return { segment: result, index: resultIndex };
   }, [segments]);
 
-  // Throttle: only update store at most every 250ms to avoid cascading re-renders.
-  // Reads real-time from player ref to stay accurate, not just the store (which is 100ms behind).
+  // Throttle: only update store at most every 100ms to avoid cascading re-renders.
+  // We use segment ID comparison (not time-based throttle) to avoid lag when seeking.
+  // Uses real-time from player ref to stay accurate, not just the store (which is 100ms behind).
   useEffect(() => {
     if (!segments.length) return;
 
@@ -91,10 +72,14 @@ export function useSubtitleSync(options: UseSubtitleSyncOptions = {}) {
     const realTime = player?.getCurrentTime?.() ?? currentTime;
     const now = Date.now();
 
-    if (now - lastUpdateRef.current < 250) return;
-    lastUpdateRef.current = now;
-
     const { segment, index } = binarySearchSegment(realTime);
+
+    // Skip if segment ID hasn't changed — avoids unnecessary re-renders
+    const newId = segment?.id ?? null;
+    if (newId === lastSegmentIdRef.current && now - lastUpdateRef.current < 100) return;
+
+    lastSegmentIdRef.current = newId;
+    lastUpdateRef.current = now;
 
     if (segment !== currentSegment || index !== currentSegmentIndex) {
       const { currentSegment: cur, currentSegmentIndex: idx } = useSubtitleStore.getState();

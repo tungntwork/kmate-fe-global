@@ -12,6 +12,11 @@ const nextConfig = {
         source: '/api/:path*',
         destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/:path*`,
       },
+      // Exclude static assets from API rewrite
+      {
+        source: '/fonts/:path*',
+        destination: '/fonts/:path*',
+      },
     ];
   },
   images: {
@@ -20,6 +25,9 @@ const nextConfig = {
       { protocol: 'https', hostname: 'lh3.googleusercontent.com' },
       { protocol: 'https', hostname: 'graph.facebook.com' },
       { protocol: 'https', hostname: 'images.unsplash.com' },
+      { protocol: 'https', hostname: 'api.qrserver.com' },
+      { protocol: 'https', hostname: '*.payos.vn' },
+      { protocol: 'https', hostname: '*.napoli.vn' },
     ],
   },
   experimental: {

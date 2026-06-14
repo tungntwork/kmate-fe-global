@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { Typography, Button, message, Spin } from 'antd';
+import { Typography, Button, Spin, message } from 'antd';
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWaitingStore } from '@/store/waiting.store';
@@ -181,8 +181,8 @@ function WaitingPageContent() {
   // Validate required params
   if (!jobId || !videoId) {
     return (
-      <div className="min-h-screen bg-dark-500 flex items-center justify-center">
-        <div className="text-center">
+        <div className="min-h-screen bg-dark-500 flex items-center justify-center">
+          <div className="text-center">
           <Title level={4} className="text-white mb-4">
             Missing job information
           </Title>
@@ -231,7 +231,7 @@ function WaitingPageContent() {
                 transition={{ delay: 0.2, duration: 0.4 }}
                 className="space-y-6"
               >
-                {/* Status message */}
+                {/* Status messageApi */}
                 <div className="bg-dark-300 rounded-2xl p-6 border border-dark-200">
                   <div className="flex items-start gap-4">
                     <div className={`w-3 h-3 rounded-full mt-1.5 ${

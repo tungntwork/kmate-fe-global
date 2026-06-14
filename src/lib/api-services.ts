@@ -56,6 +56,23 @@ export const coinService = {
 };
 
 // ============================================================
+// PAYMENTS
+// ============================================================
+export const paymentService = {
+  createPayment: (packageId: string) =>
+    api.post<{ data: CreatePaymentResponse }>('/payments/create', { packageId }),
+
+  confirmPayment: (paymentId: string) =>
+    api.post<{ data: ConfirmPaymentResponse }>('/payments/confirm', { paymentId }),
+
+  cancelPayment: (paymentId: string) =>
+    api.post<{ data: CancelPaymentResponse }>('/payments/cancel', { paymentId }),
+
+  getPaymentStatus: (paymentId: string) =>
+    api.get<{ data: PaymentStatusResponse }>(`/payments/${paymentId}/status`),
+};
+
+// ============================================================
 // USERS
 // ============================================================
 export const userService = {
@@ -82,8 +99,15 @@ export const userService = {
 // NOTIFICATIONS
 // ============================================================
 export const notificationService = {
-  list: (params?: { page?: number; limit?: number }) =>
-    api.get<{ data: Notification[]; pagination: Pagination }>('/notifications', { params }),
+  list: async (params?: { page?: number; limit?: number }) => {
+    const res = await api.get<{ data: Notification[]; pagination: Pagination }>('/notifications', { params });
+    // Backend returns readAt; derive isRead so downstream code works correctly
+    res.data.data = res.data.data.map((n) => ({
+      ...n,
+      isRead: !!n.readAt,
+    }));
+    return res;
+  },
 
   markAsRead: (ids?: string[]) =>
     api.put('/notifications/read', { notificationIds: ids }),
@@ -236,6 +260,45 @@ export interface DailyLoginResponse {
   message: string;
   reward: number;
   newBalance: number;
+}
+
+export interface CreatePaymentResponse {
+  paymentId: string;
+  orderCode: string;
+  checkoutUrl: string | null;
+  qrCode: string | null;
+  accountNumber: string | null;
+  accountName: string | null;
+  amount: number;
+  coinAmount: number;
+  expiresAt: string;
+}
+
+export interface ConfirmPaymentResponse {
+  success: boolean;
+  paymentStatus: string;
+  coinAmount: number;
+  newBalance?: number;
+  message?: string;
+}
+
+export interface CancelPaymentResponse {
+  success: boolean;
+  message?: string;
+}
+
+export interface PaymentStatusResponse {
+  id: string;
+  orderCode: string;
+  amount: number;
+  coinAmount: number;
+  status: string;
+  payosCheckoutUrl: string | null;
+  payosPaymentId: string | null;
+  expiresAt: string;
+  paidAt: string | null;
+  createdAt: string;
+  payosStatus: string | null;
 }
 
 export interface UserProfile {
@@ -530,6 +593,26 @@ export const videoService = {
 
   updateProgress: (id: string, data: { currentTime: number; duration: number }) =>
     api.put(`/videos/${id}/progress`, data),
+
+  getWatchedVideos: (params?: { page?: number; limit?: number }) =>
+    api.get<{
+      data: {
+        videos: {
+          videoId: string;
+          youtubeId: string;
+          title: string;
+          thumbnailUrl: string;
+          duration: number;
+          progress: number;
+          status: string;
+          lastWatchedAt: string;
+          watchCount: number;
+        }[];
+        total: number;
+        page: number;
+        limit: number;
+      };
+    }>('/videos/watched', { params }),
 };
 
 // ============================================================
@@ -616,7 +699,7 @@ export const flashcardService = {
   getFlashcards: (params?: { deckId?: string; page?: number; limit?: number }) =>
     api.get<{ data: Flashcard[]; pagination: Pagination }>('/flashcards', { params }),
 
-  createFlashcard: (data: { word: string; meaning: string; exampleSentence?: string; exampleTranslation?: string; pronunciation?: string; deckId?: string; videoId?: string }) =>
+  createFlashcard: (data: { word: string; meaning?: string; exampleSentence?: string; exampleTranslation?: string; pronunciation?: string; deckId?: string; videoId?: string; vietnameseMeaning?: string }) =>
     api.post<{ data: Flashcard }>('/flashcards', data),
 
   updateFlashcard: (id: string, data: Partial<{ front: string; back: string; example: string; pronunciation: string }>) =>
@@ -626,7 +709,7 @@ export const flashcardService = {
     api.delete(`/flashcards/${id}`),
 
   getDue: () =>
-    api.get<{ data: Flashcard[] }>('/flashcards/due'),
+    api.get<{ data: { flashcards: Flashcard[]; totalDue: number } }>('/flashcards/due'),
 
   review: (data: { flashcardId: string; quality: number }) =>
     api.post<{ data: Flashcard }>('/flashcards/review', data),
@@ -638,17 +721,23 @@ export const flashcardService = {
     api.get<{ data: FlashcardStats }>('/flashcards/stats'),
 
   // ── Session progress ─────────────────────────────────────────────
-  startSession: (data: { deckId?: string; cardIds: string[] }) =>
-    api.post<{ data: { id: string; deckId: string | null; cardIds: string[]; currentIndex: number; status: string } }>('/flashcards/session/start', data),
+  startSession: (data: { deckId?: string; cardIds: string[]; sessionId?: string }) =>
+    api.post<{ data: { id: string; deckId: string | null; cardIds: string[]; currentIndex: number; answeredIds: string[]; status: string } }>('/flashcards/session/start', data),
 
   getSession: () =>
     api.get<{ data: { id: string; deckId: string | null; cardIds: string[]; currentIndex: number; answeredIds: string[]; status: string } | null }>('/flashcards/session'),
+
+  getSessionCards: (ids: string[]) =>
+    api.get<{ data: Flashcard[] }>(`/flashcards/session-cards?ids=${ids.join(',')}`),
 
   updateSessionProgress: (data: { sessionId: string; currentIndex: number; answeredIds: string[] }) =>
     api.patch<{ data: { id: string; currentIndex: number; answeredIds: string[] } }>('/flashcards/session/progress', data),
 
   completeSession: (data: { sessionId: string }) =>
     api.post<{ data: { id: string; status: string } }>('/flashcards/session/complete', data),
+
+  saveSessionAsDeck: (data: { sessionId: string; deckName: string }) =>
+    api.post<{ data: { deck: { id: string; name: string; color: string; cardCount: number }; savedCardCount: number } }>('/flashcards/session/save-as-deck', data),
 };
 
 // ============================================================
@@ -708,7 +797,8 @@ export interface QuizHistoryItem {
 }
 
 export interface QuizDeck {
-  id: string;
+  id?: string; // legacy alias for quizId
+  quizId: string;
   deckId?: string;
   deckName?: string;
   mode: 'deck' | 'random' | 'ai';
@@ -716,6 +806,20 @@ export interface QuizDeck {
   timeLimit: number;
   expiresAt: string;
   questions: QuizQuestion[];
+}
+
+export interface WrongAnswerGroup {
+  quizId: string;
+  completedAt: string | null;
+  wrongCount: number;
+  uniqueWordCount: number;
+  words: Array<{ flashcardId: string; word: string; meaning: string; deckName?: string }>;
+}
+
+export interface WrongAnswersSummary {
+  groups: WrongAnswerGroup[];
+  totalWrongAnswers: number;
+  totalUniqueWords: number;
 }
 
 export const quizService = {
@@ -735,9 +839,19 @@ export const quizService = {
       totalAnswered: number;
     } }>('/quiz/stats'),
 
-  // Create a new quiz from deck / random / ai
-  createQuiz: (data: { deckId?: string; videoId?: string; mode?: 'deck' | 'random' | 'ai'; count?: number }) =>
-    api.post<{ data: QuizDeck }>('/quiz', data),
+  // Create a new quiz from deck / random / ai / wrong_answers
+  createQuiz: (data: {
+    deckId?: string;
+    videoId?: string;
+    mode?: 'deck' | 'random' | 'ai';
+    count?: number;
+    sourceType?: 'deck' | 'wrong_answers' | 'all' | 'video';
+    sourceIds?: { deckIds?: string[]; wrongQuizIds?: string[] };
+  }) => api.post<{ data: QuizDeck }>('/quiz', data),
+
+  // Get wrong answers from past quizzes
+  getWrongAnswers: (limit?: number) =>
+    api.get<{ data: WrongAnswersSummary }>('/quiz/wrong-answers', { params: { limit } }),
 
   // Get quiz with questions by quizId
   getQuiz: (quizId: string) =>
@@ -763,6 +877,8 @@ export const quizService = {
       expiresAt: string;
       startedAt: string;
       timeLimit: number;
+      mode?: 'deck' | 'random' | 'ai';
+      deckId?: string | null;
     } }>(`/quiz/${quizId}/resume`),
 
   saveProgress: (quizId: string, data: { currentQuestion: number; answersJson: Record<string, string> }) =>

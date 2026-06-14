@@ -21,7 +21,16 @@ export function UserHeader() {
   const { collapsed, toggle } = useSidebarStore();
   const { socket, isConnected } = useSocket();
   const [unreadCount, setUnreadCount] = useState(0);
-  const [coinBalance, setCoinBalance] = useState<number | null>(null);
+  const [coinBalance, setCoinBalance] = useState<number | null>(
+    () => user?.coinBalance ?? null
+  );
+
+  // Sync coin balance whenever the store user object changes
+  useEffect(() => {
+    if (user?.coinBalance != null) {
+      setCoinBalance(user.coinBalance);
+    }
+  }, [user?.coinBalance]);
 
   // Load initial data
   useEffect(() => {
@@ -29,7 +38,7 @@ export function UserHeader() {
 
     notificationService.list({ limit: 100 })
       .then((r) => {
-        const unread = r.data.data.filter((n: { isRead?: boolean }) => !n.isRead).length;
+        const unread = r.data.data.filter((n: { readAt?: string | null }) => !n.readAt).length;
         setUnreadCount(unread);
       })
       .catch(() => {});
@@ -66,6 +75,16 @@ export function UserHeader() {
       socket.off('coin:earned', handleCoinEarned);
     };
   }, [socket, handleNotificationNew, handleCoinEarned]);
+
+  // Listen for read-count changes dispatched by UserNotificationsPage
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ count: number }>).detail;
+      setUnreadCount(detail.count);
+    };
+    window.addEventListener('notifications:read-changed', handler);
+    return () => window.removeEventListener('notifications:read-changed', handler);
+  }, []);
 
   const userMenuItems = [
     {

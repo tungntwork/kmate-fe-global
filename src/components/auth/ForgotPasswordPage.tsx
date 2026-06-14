@@ -71,6 +71,7 @@ export function ForgotPasswordPage() {
                 width={120}
                 height={30}
                 className="h-[30px] w-auto object-contain"
+                style={{ width: 'auto' }}
               />
             </Link>
             <div className="flex items-center gap-4">

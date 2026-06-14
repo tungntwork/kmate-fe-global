@@ -126,7 +126,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               />
             ) : (
               <>
-                <Image src={imgKMATELOGO} alt="K-MATE" width={110} height={28} className="object-contain" />
+                <Image src={imgKMATELOGO} alt="K-MATE" width={110} height={28} className="object-contain" style={{ width: 'auto' }} />
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
                   ADMIN
                 </span>
