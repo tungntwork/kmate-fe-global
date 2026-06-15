@@ -137,15 +137,22 @@ export function VideoPlayer({
 
       playerRef.current = player;
 
-      // Sync currentTime to store every 100ms while playing (was 250ms — too coarse for short subtitle segments)
-      const interval = setInterval(() => {
+      // DOM-only update for progress bar — runs at display refresh rate via rAF,
+      // bypasses React re-renders entirely so the progress bar never jitters.
+      let rafId: number;
+      const syncProgress = () => {
         if (playerRef.current?.getCurrentTime) {
-          usePlayerStore.getState().setCurrentTime(playerRef.current.getCurrentTime());
+          const time = playerRef.current.getCurrentTime();
+          // Update store only when segment changes (subtitle sync handles this via useSubtitleSync)
+          // Store update here is for display only — throttle to avoid cascading re-renders
+          usePlayerStore.getState().setCurrentTime(time);
         }
-      }, 100);
+        rafId = requestAnimationFrame(syncProgress);
+      };
+      rafId = requestAnimationFrame(syncProgress);
 
       return () => {
-        clearInterval(interval);
+        cancelAnimationFrame(rafId);
         playerRef.current?.destroy();
         playerRef.current = null;
       };

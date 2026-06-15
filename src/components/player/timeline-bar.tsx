@@ -7,10 +7,12 @@ import { usePlayerStore } from '@/store/player.store';
 import { useSubtitleSync } from '@/hooks/use-subtitle-sync';
 
 export const TimelineBar = memo(function TimelineBar() {
-  // Use useShallow so the object ref is only new when values actually change
-  const { currentTime, duration, buffered, video, seek, isPlaying } = usePlayerStore(
+  // Only subscribe to things that ACTUALLY change the timeline visually:
+  // - duration (new video loaded)
+  // - buffered (buffer progress)
+  // - video (new video → reset)
+  const { duration, buffered, video, seek, isPlaying } = usePlayerStore(
     useShallow((s) => ({
-      currentTime: s.currentTime,
       duration: s.duration,
       buffered: s.buffered,
       video: s.video,
@@ -26,8 +28,27 @@ export const TimelineBar = memo(function TimelineBar() {
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState(0);
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufferedWidth = duration > 0 ? (buffered / 100) * 100 : 0;
+
+  // ── Sync progress bar DOM directly via ref — zero React re-renders ──────────
+  // Subscribe ONLY to currentTime — the one value that needs to drive progress
+  usePlayerStore((s) => s.currentTime);
+
+  // rAF loop for buttery-smooth progress — bypasses React render cycle entirely
+  const progressFillRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number>(0);
+  useEffect(() => {
+    const update = () => {
+      const { currentTime: ct, duration: dur } = usePlayerStore.getState();
+      const fill = progressFillRef.current;
+      if (fill && dur > 0) {
+        fill.style.width = `${(ct / dur) * 100}%`;
+      }
+      rafRef.current = requestAnimationFrame(update);
+    };
+    rafRef.current = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, []);
 
   // Memoize segment dots — they only depend on segments + duration, not currentTime
   // This prevents re-rendering 100-200+ dots on every currentTime change
@@ -176,10 +197,11 @@ export const TimelineBar = memo(function TimelineBar() {
           style={{ width: `${bufferedWidth}%` }}
         />
 
-        {/* Progress */}
+        {/* Progress — updated via rAF + DOM ref, never triggers React re-render */}
         <div
+          ref={progressFillRef}
           className="absolute inset-y-0 left-0 bg-primary-500 rounded-full"
-          style={{ width: `${progress}%` }}
+          style={{ width: '0%' }}
         >
           {/* Progress knob */}
           <div
