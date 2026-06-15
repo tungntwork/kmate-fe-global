@@ -99,7 +99,6 @@ export default function LearningPlayerPage() {
     isPlaying,
     currentTime,
     reset: resetPlayer,
-    togglePlay,
   } = usePlayerStore();
 
   const {
@@ -571,8 +570,8 @@ export default function LearningPlayerPage() {
       <div className="flex flex-1 overflow-hidden" ref={containerRef}>
         {/* Video player column */}
         <div className="flex-1 flex flex-col relative">
-          {/* Player container — click anywhere to toggle play/pause */}
-          <div className="relative flex-1 bg-black" onClick={() => togglePlay()}>
+          {/* Player container — click empty space to start/resume playback */}
+          <div className="relative flex-1 bg-black player-container" onClick={() => usePlayerStore.getState().play()}>
             <VideoPlayer youtubeId={video?.youtubeId} poster={video?.thumbnail} />
             <SubtitleOverlay onWordClick={handleWordClick} />
             <PlayerControls />
@@ -594,7 +593,7 @@ export default function LearningPlayerPage() {
                 >
                   {selectedWord.word}
                 </span>
-                <button onClick={handleCloseWordPopup} className="text-slate-400 hover:text-white">×</button>
+                <button onClick={(e) => { e.stopPropagation(); handleCloseWordPopup(); }} className="text-slate-400 hover:text-white">×</button>
               </div>
 
               {selectedWord.isLoading ? (

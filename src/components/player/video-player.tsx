@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from '@/store/player.store';
+import { PlayCircleOutlined } from '@ant-design/icons';
 
 declare global {
   interface Window {
@@ -34,7 +35,6 @@ export function VideoPlayer({
 }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<globalThis.YT.Player | null>(null);
-  const [playerReady, setPlayerReady] = useState(false);
   const [hidePoster, setHidePoster] = useState(false);
   const apiReadyRef = useRef(false);
 
@@ -100,10 +100,11 @@ export function VideoPlayer({
             setPlayerRef(yt);
             const duration = yt.getDuration();
             usePlayerStore.getState().setDuration(duration);
-            setPlayerReady(true);
             setHidePoster(true);
-            // Block YouTube's native iframe pointer events so our React popup/controls
-            // can render and interact on top without being intercepted by the iframe.
+            // Block YouTube's native iframe pointer events so clicks pass through
+            // to our React overlay. The React overlay uses pointer-events-none
+            // to let clicks through to the iframe for fullscreen. The poster
+            // play button above the iframe is what users click to start playback.
             try {
               const iframe = yt.getIframe();
               iframe.style.pointerEvents = 'none';
@@ -171,8 +172,8 @@ export function VideoPlayer({
   if (!youtubeId) return null;
 
   return (
-    <div className="relative w-full aspect-video bg-black">
-      {/* Poster — hidden once player is ready */}
+    <div className="relative w-full aspect-video bg-black player-container">
+      {/* Poster — shown until player is ready */}
       {poster && !hidePoster && (
         <img
           src={poster}
@@ -181,8 +182,26 @@ export function VideoPlayer({
         />
       )}
 
-      {/* YouTube IFrame — replaced by IFrame API player */}
-      <div ref={containerRef} className="absolute inset-0 w-full h-full" />
+      {/* Poster play button — large centered button users click to start */}
+      {!hidePoster && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation(); // don't bubble to PlayerControls motion.div
+            const player = playerRef.current;
+            if (player && typeof player.playVideo === 'function') {
+              player.playVideo();
+            }
+          }}
+          className="absolute inset-0 z-20 flex items-center justify-center group"
+          aria-label="Play video"
+        >
+          <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors" />
+          <PlayCircleOutlined className="text-white/90 text-7xl drop-shadow-2xl group-hover:scale-110 transition-transform" />
+        </button>
+      )}
+
+      {/* YouTube IFrame — pointer-events-none so clicks pass through to poster/play button above */}
+      <div ref={containerRef} className="absolute inset-0 w-full h-full pointer-events-none" />
     </div>
   );
 }

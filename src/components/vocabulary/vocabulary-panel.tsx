@@ -198,7 +198,7 @@ export const VocabularyPanel = memo(function VocabularyPanel({
   }, [savedFiltered, currentSegmentWords, onCreateFlashcards]);
 
   return (
-    <div className="flex flex-col h-full bg-dark-300 rounded-xl border border-dark-200 overflow-hidden">
+    <div className="flex flex-col h-full bg-dark-300 border border-dark-200 overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 border-b border-dark-200 flex-shrink-0">
         <h3 className="text-sm font-semibold text-white">Từ vựng từ video</h3>

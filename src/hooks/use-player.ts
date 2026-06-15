@@ -9,9 +9,7 @@ interface UsePlayerOptions {
   startTime?: number;
 }
 
-export function usePlayer(options: UsePlayerOptions = {}) {
-  const { autoPlay = false, startTime = 0 } = options;
-  
+export function usePlayer(_options: UsePlayerOptions = {}) {
   const {
     video,
     isPlaying,
@@ -37,8 +35,6 @@ export function usePlayer(options: UsePlayerOptions = {}) {
     setBuffered,
     setIsLoading,
     setHasError,
-    setIsFullscreen,
-    setSpeed,
     setVolume,
     toggleMute,
     showControls,
@@ -54,9 +50,7 @@ export function usePlayer(options: UsePlayerOptions = {}) {
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
     }
-    
     showControls();
-    
     if (isPlaying) {
       controlsTimeoutRef.current = setTimeout(() => {
         hideControls();
@@ -64,31 +58,7 @@ export function usePlayer(options: UsePlayerOptions = {}) {
     }
   }, [isPlaying, showControls, hideControls]);
 
-  // Toggle fullscreen helper (must be defined before handleKeyDown)
-  const toggleFullscreen = useCallback(() => {
-    const container = document.querySelector('.player-container');
-    if (!container) return;
-
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      container.requestFullscreen();
-    }
-  }, []);
-
-  // Handle fullscreen changes
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    };
-  }, [setIsFullscreen]);
-
-  // Auto-hide controls timer cleanup
+  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
       if (controlsTimeoutRef.current) {
@@ -134,7 +104,8 @@ export function usePlayer(options: UsePlayerOptions = {}) {
       case 'f':
       case 'F':
         e.preventDefault();
-        toggleFullscreen();
+        // Delegate to store (which uses DOM API) — fullscreenchange syncs the state
+        usePlayerStore.getState().toggleFullscreen();
         break;
       case 'm':
       case 'M':
@@ -192,10 +163,6 @@ export function usePlayer(options: UsePlayerOptions = {}) {
     setCurrentTime,
     setDuration,
     setBuffered,
-    toggleFullscreen,
-    setSpeed,
-    setVolume,
-    toggleMute,
     showControls: resetControlsTimer,
     hideControls,
     

@@ -68,7 +68,7 @@ export function SubtitleControlBar({
   return (
     <div className={`flex items-center gap-3 ${className}`}>
       {/* Subtitle toggle */}
-      <Tooltip title={visible ? 'Hide subtitles' : 'Show subtitles'}>
+      <Tooltip title={visible ? 'Ẩn phụ đề' : 'Hiện phụ đề'}>
         <Button
           type={visible ? 'primary' : 'default'}
           size="small"

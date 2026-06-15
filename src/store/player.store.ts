@@ -228,7 +228,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         } else if (container) {
           container.requestFullscreen();
         }
-        set((state) => ({ isFullscreen: !state.isFullscreen }));
+        // Do NOT toggle optimistically — fullscreenchange event syncs the real state
       },
 
       setSpeed: (speed) => {

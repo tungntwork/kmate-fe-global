@@ -271,7 +271,7 @@ export function SubtitleGenerationModal({
               disabled={!resolvedJobId}
               className="text-sky-400 hover:text-sky-300 text-sm"
             >
-              Xem video ngắn trong lúc chờ
+              Video của bạn đang sẵn sàng
             </Button>
           </div>
         </div>

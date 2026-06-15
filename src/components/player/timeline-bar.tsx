@@ -79,6 +79,7 @@ export const TimelineBar = memo(function TimelineBar() {
 
   // Handle mouse move on timeline
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation(); // prevent bubbling to container
     if (!trackRef.current || duration === 0) return;
 
     const rect = trackRef.current.getBoundingClientRect();

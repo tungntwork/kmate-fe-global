@@ -31,7 +31,6 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
     setDisplayMode,
     showControls,
     hideControls,
-    isFullscreen,
     controlsVisible,
   } = usePlayerStore();
 
@@ -121,7 +120,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
     // Fullscreen
     { key: 'f', action: toggleFullscreen, description: 'Toggle fullscreen' },
     { key: 'F', action: toggleFullscreen, description: 'Toggle fullscreen' },
-    { key: 'Escape', action: () => { if (isFullscreen) toggleFullscreen(); }, description: 'Exit fullscreen' },
+    { key: 'Escape', action: () => { if (document.fullscreenElement) document.exitFullscreen(); }, description: 'Exit fullscreen' },
 
     // Controls visibility
     { key: '?', action: resetControlsTimer, description: 'Show controls' },

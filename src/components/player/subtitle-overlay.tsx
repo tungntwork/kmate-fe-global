@@ -54,7 +54,7 @@ export function SubtitleOverlay({ onWordClick }: SubtitleOverlayProps) {
 
   const subtitleContent = (
     <div
-      className="max-w-4xl w-full text-center pointer-events-auto"
+      className="max-w-4xl w-full text-center"
       style={{ opacity: subtitleOpacity }}
     >
       {settings.displayMode === 'bilingual' ? (
@@ -99,6 +99,7 @@ export function SubtitleOverlay({ onWordClick }: SubtitleOverlayProps) {
           exit={{ opacity: 0, y: 10 }}
           transition={{ duration: 0.15, ease: 'easeOut' }}
           className={containerClass}
+          onClick={(e) => e.stopPropagation()}
         >
           {subtitleContent}
         </motion.div>
@@ -107,7 +108,7 @@ export function SubtitleOverlay({ onWordClick }: SubtitleOverlayProps) {
   }
 
   return (
-    <div className={containerClass}>
+    <div className={containerClass} onClick={(e) => e.stopPropagation()}>
       {subtitleContent}
     </div>
   );

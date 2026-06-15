@@ -90,6 +90,7 @@ export const PlayerControls = memo(function PlayerControls({ onOpenSettings }: P
           className="absolute inset-x-0 bottom-0 z-40"
           onMouseEnter={showControls}
           onMouseMove={showControls}
+          onClick={(e) => e.stopPropagation()}
         >
           {/* Gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none" />
@@ -184,7 +185,7 @@ export const PlayerControls = memo(function PlayerControls({ onOpenSettings }: P
                 </div>
 
                 {/* Subtitle toggle */}
-                <Tooltip title={settings.subtitleVisible ? 'Hide subtitles (c)' : 'Show subtitles (c)'}>
+                <Tooltip title={settings.subtitleVisible ? 'Ẩn phụ đề (c)' : 'Hiện phụ đề (c)'}>
                   <button
                     onClick={toggleSubtitle}
                     className={`text-white hover:text-primary-400 transition-colors px-2 py-1 text-sm rounded hover:bg-white/10 ${
@@ -197,12 +198,12 @@ export const PlayerControls = memo(function PlayerControls({ onOpenSettings }: P
                 </Tooltip>
 
                 {/* Subtitle position */}
-                <Tooltip title="Subtitle position">
+                <Tooltip title="Vị trí phụ đề">
                   <button
                     onClick={toggleSubtitlePosition}
                     className="text-white hover:text-primary-400 transition-colors"
                     aria-label="Toggle subtitle position"
-                  >
+                  > 
                     {settings.subtitlePosition === 'bottom' ? (
                       <VerticalAlignBottomOutlined className="text-xl" />
                     ) : (
@@ -225,7 +226,7 @@ export const PlayerControls = memo(function PlayerControls({ onOpenSettings }: P
                 )}
 
                 {/* Fullscreen */}
-                <Tooltip title={isFullscreen ? 'Exit fullscreen (f)' : 'Fullscreen (f)'}>
+                <Tooltip title={isFullscreen ? 'Thoát toàn màn hình (f)' : 'Toàn màn hình (f)'}>
                   <button
                     onClick={toggleFullscreen}
                     className="text-white hover:text-primary-400 transition-colors"

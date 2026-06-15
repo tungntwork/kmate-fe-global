@@ -115,7 +115,7 @@ export function WordPopup({
             </button>
           </Tooltip>
           <button
-            onClick={onClose}
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
             className="text-gray-400 hover:text-white transition-colors p-1"
           >
             <CloseOutlined />
@@ -198,8 +198,12 @@ export function ClickableSubtitleText({ text, onWordClick, style }: ClickableTex
 
   const handleMouseEnter = useCallback(
     (word: string, e: React.MouseEvent<HTMLSpanElement>) => {
+      // Cancel any pending tooltip hide before showing new one
+      if (hideTooltipTimeout.current) {
+        clearTimeout(hideTooltipTimeout.current);
+        hideTooltipTimeout.current = null;
+      }
       pauseByHover();
-      if (hideTooltipTimeout.current) clearTimeout(hideTooltipTimeout.current);
       const trimmed = word.trim();
       const saved = getItemByWord(trimmed);
       if (saved) {
@@ -216,10 +220,14 @@ export function ClickableSubtitleText({ text, onWordClick, style }: ClickableTex
   );
 
   const handleMouseLeave = useCallback(() => {
+    // Cancel any pending tooltip hide so stale timers don't fire
+    if (hideTooltipTimeout.current) {
+      clearTimeout(hideTooltipTimeout.current);
+      hideTooltipTimeout.current = null;
+    }
+    // Immediately clear the hovered word (no delay — stale state is worse)
+    setHoveredWord(null);
     resumeFromHover();
-    hideTooltipTimeout.current = setTimeout(() => {
-      setHoveredWord(null);
-    }, 150);
   }, [resumeFromHover]);
 
   return (
@@ -234,7 +242,7 @@ export function ClickableSubtitleText({ text, onWordClick, style }: ClickableTex
         return (
           <span
             key={index}
-            className="cursor-pointer hover:text-primary-300 transition-colors"
+            className="cursor-pointer hover:text-primary-300 transition-colors pointer-events-auto"
             style={style}
             onMouseEnter={(e) => handleMouseEnter(word, e)}
             onMouseLeave={handleMouseLeave}
