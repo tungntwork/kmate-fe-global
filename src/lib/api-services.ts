@@ -22,6 +22,9 @@ export const authService = {
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.put('/auth/password', data),
 
+  googleLogin: (idToken: string) =>
+    api.post<{ data: { user: AuthUser; accessToken: string; refreshToken: string } }>('/auth/google', { idToken }),
+
   forgotPassword: (email: string) =>
     api.post('/auth/forgot-password', { email }),
 
@@ -150,6 +153,12 @@ export const adminService = {
   getPayments: (params?: { page?: number; limit?: number; status?: string }) =>
     api.get<{ data: AdminPayment[]; pagination: Pagination }>('/admin/payments', { params }),
 
+  approvePayment: (paymentId: string) =>
+    api.post<{ success: boolean; message: string }>(`/admin/payments/${paymentId}/approve`),
+
+  rejectPayment: (paymentId: string) =>
+    api.post<{ success: boolean; message: string }>(`/admin/payments/${paymentId}/reject`),
+
   getAIQueue: (params?: { status?: string }) =>
     api.get<{ data: AIJob[] }>('/admin/ai-queue', { params }),
 
@@ -176,6 +185,24 @@ export const adminService = {
 
   updatePackage: (id: string, data: Partial<PackageInput>) =>
     api.put<{ data: CoinPackageAdmin }>(`/admin/packages/${id}`, data),
+
+  deletePackage: (id: string) =>
+    api.delete<{ success: boolean }>(`/admin/packages/${id}`),
+
+  broadcastWeeklyReport: () =>
+    api.post<{ success: boolean; data: { total: number; sent: number; failed: number }; message: string }>('/admin/reports/weekly/broadcast'),
+
+  sendWeeklyReportToUser: (userId: string) =>
+    api.post<{ success: boolean; message: string }>(`/admin/reports/weekly/send/${userId}`),
+
+  previewReport: (userId: string) =>
+    api.get<{ success: boolean; data: { subject: string; html: string; report: WeeklyReportData } }>(`/admin/reports/weekly/preview/${userId}`),
+
+  sendWeeklyReportToSelected: (userIds: string[]) =>
+    api.post<{ success: boolean; data: { total: number; sent: number; failed: number }; message: string }>(
+      '/admin/reports/weekly/send-selected',
+      { userIds },
+    ),
 
   getLogs: (params?: { page?: number; limit?: number; action?: string }) =>
     api.get<{ data: AdminLog[]; pagination: Pagination }>('/admin/logs', { params }),
@@ -673,6 +700,35 @@ export interface FlashcardDeck {
   dueCount: number;
   color: string;
   createdAt: string;
+}
+
+export interface WeeklyReportData {
+  userName: string;
+  userEmail: string;
+  weekStart: string;
+  weekEnd: string;
+  totalVideosWatched: number;
+  totalMinutesLearned: number;
+  totalWordsLookedUp: number;
+  totalFlashcardsReviewed: number;
+  totalFlashcardsCreated: number;
+  totalQuizzesTaken: number;
+  avgQuizScore: number;
+  totalCoinsEarned: number;
+  totalCoinsSpent: number;
+  streakDays: number;
+  dailyBreakdown: {
+    date: string;
+    videosWatched: number;
+    minutesLearned: number;
+    wordsLookedUp: number;
+    flashcardsReviewed: number;
+    flashcardsCreated: number;
+    quizzesTaken: number;
+    avgQuizScore: number;
+    coinsEarned: number;
+    coinsSpent: number;
+  }[];
 }
 
 export interface FlashcardStats {

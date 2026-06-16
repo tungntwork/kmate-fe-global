@@ -3,6 +3,7 @@ import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { ConfigProvider, App } from 'antd';
 import { QueryProvider } from '@/lib/query-provider';
 import { SocketProvider } from '@/lib/socket-provider';
+import Script from 'next/script';
 import '@/styles/globals.css';
 
 export const metadata: Metadata = {
@@ -43,6 +44,10 @@ export default function RootLayout({
             </QueryProvider>
           </ConfigProvider>
         </AntdRegistry>
+        <Script
+          src="https://accounts.google.com/gsi/client"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );

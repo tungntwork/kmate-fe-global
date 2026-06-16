@@ -22,8 +22,10 @@ import { useSubtitleSocket } from '@/hooks/use-subtitle-socket';
 import { SubtitleGenerationModal } from '@/components/subtitle/subtitle-generation-modal';
 import { VocabularyPanel } from '@/components/vocabulary/vocabulary-panel';
 import { FlashcardCreateModal } from '@/components/vocabulary/flashcard-create-modal';
-import { videoService, subtitleService, flashcardService } from '@/lib/api-services';
+import { videoService, subtitleService, flashcardService, coinService } from '@/lib/api-services';
 import { api } from '@/lib/api';
+import { InsufficientBalanceModal } from '@/components/player/InsufficientBalanceModal';
+import { LowBalanceModal } from '@/components/player/LowBalanceModal';
 import type { VideoDetailResult } from '@/lib/api-services';
 import {
   VideoPlayer,
@@ -86,6 +88,12 @@ export default function LearningPlayerPage() {
   const [vocabJobId, setVocabJobId] = useState<string | null>(null);
   const [flashcardModalOpen, setFlashcardModalOpen] = useState(false);
   const [selectedVocabIds, setSelectedVocabIds] = useState<string[]>([]);
+
+  // Coin balance gate
+  const [balanceCheckDone, setBalanceCheckDone] = useState(false);
+  const [balanceChecked, setBalanceChecked] = useState(false);
+  const [currentBalance, setCurrentBalance] = useState(0);
+  const [balanceLoading, setBalanceLoading] = useState(false);
 
   // Stable ref to current segment — used by handleWordClick to get context for lookup API
   const currentSegmentRef = useRef<typeof currentSegment>(null);
@@ -157,8 +165,29 @@ export default function LearningPlayerPage() {
     }
   }, [subtitleSocket.ready, videoId]);
 
+  // ── Pre-flight coin balance check ──────────────────────────────────
+  useEffect(() => {
+    if (balanceChecked || !videoId) return;
+
+    setBalanceLoading(true);
+    coinService.getBalance()
+      .then((res) => {
+        setCurrentBalance(res.data.data.balance ?? 0);
+      })
+      .catch(() => {
+        setCurrentBalance(0);
+      })
+      .finally(() => {
+        setBalanceLoading(false);
+        setBalanceChecked(true);
+      });
+  }, [videoId, balanceChecked]);
+
   // ── Load video + subtitles ─────────────────────────────────────────
   useEffect(() => {
+    // Skip if balance hasn't been checked yet, or if user has 0 coin (modal is shown)
+    if (!balanceChecked || (balanceChecked && currentBalance === 0)) return;
+
     const loadContent = async () => {
       setIsLoading(true);
       setLoadError(null);
@@ -225,7 +254,7 @@ export default function LearningPlayerPage() {
       }
     };
 
-    if (videoId) {
+    if (videoId && balanceChecked && currentBalance > 0) {
       loadContent();
     }
 
@@ -812,6 +841,27 @@ export default function LearningPlayerPage() {
         onClose={() => setFlashcardModalOpen(false)}
         onCreated={() => setFlashcardModalOpen(false)}
       />
+
+      {/* Coin balance gate */}
+      {balanceLoading && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0B0B0F]">
+          <Spin size="large" />
+          <p className="mt-4 text-slate-400">Đang kiểm tra số dư...</p>
+        </div>
+      )}
+
+      {balanceChecked && currentBalance === 0 && !balanceLoading && (
+        <InsufficientBalanceModal open />
+      )}
+
+      {balanceChecked && currentBalance > 0 && currentBalance < 10 && !balanceLoading && !isLoading && (
+        <LowBalanceModal
+          open
+          balance={currentBalance}
+          onContinue={() => setBalanceChecked(false)}
+          onBack={() => router.back()}
+        />
+      )}
     </div>
   );
 }

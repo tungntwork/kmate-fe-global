@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Table, Button, Tag, Input, Modal, InputNumber, Switch,  } from "antd";
+import { Table, Button, Tag, Input, Modal, InputNumber, Switch, Popconfirm, } from "antd";
 import { App } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { adminService, type CoinPackageAdmin, type PackageInput } from '@/lib/api-services';
 
 export default function AdminPackagesPage() {
@@ -17,6 +17,7 @@ export default function AdminPackagesPage() {
     name: '', description: '', coinAmount: 0, bonusCoinAmount: 0, price: 0, isActive: true, sortOrder: 0,
   });
   const [saving, setSaving] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -68,6 +69,16 @@ export default function AdminPackagesPage() {
     } catch { message.error('Lỗi cập nhật trạng thái'); }
   };
 
+  const handleDelete = async (id: string) => {
+    setDeleteLoading(id);
+    try {
+      await adminService.deletePackage(id);
+      message.success('Đã xoá gói coins');
+      load();
+    } catch { message.error('Lỗi xoá gói coins'); }
+    finally { setDeleteLoading(null); }
+  };
+
   const columns: ColumnsType<CoinPackageAdmin> = [
     {
       title: 'Tên gói',
@@ -116,7 +127,19 @@ export default function AdminPackagesPage() {
       title: 'Hành động',
       key: 'actions',
       render: (_, record) => (
-        <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} className="!rounded-lg !text-xs" />
+        <div className="flex gap-2">
+          <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} className="!rounded-lg !text-xs" />
+          <Popconfirm
+            title="Xoá gói coins"
+            description="Bạn có chắc muốn xoá gói này? Hành động không thể hoàn tác."
+            onConfirm={() => handleDelete(record.id)}
+            okText="Xoá"
+            cancelText="Huỷ"
+            okButtonProps={{ danger: true, loading: deleteLoading === record.id }}
+          >
+            <Button size="small" danger icon={<DeleteOutlined />} className="!rounded-lg !text-xs" />
+          </Popconfirm>
+        </div>
       ),
     },
   ];

@@ -11,6 +11,7 @@ import { motion } from 'framer-motion';
 import imgKMATELOGO from '../../../assets/img/branding/KMATELOGO.png';
 import { authService } from '@/lib/api-services';
 import { useAuthStore } from '@/store/auth.store';
+import { useGoogleAuth } from '@/hooks/use-google-auth';
 
 export function RegisterPage() {
   const { message } = App.useApp();
@@ -22,6 +23,7 @@ export function RegisterPage() {
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { promptGoogle } = useGoogleAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,13 +69,22 @@ export function RegisterPage() {
   };
 
   const handleGoogleRegister = () => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    if (clientId) {
-      const redirectUri = `${window.location.origin}/api/auth/google/callback`;
-      window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20email%20profile`;
-    } else {
-      message.warning('Google OAuth chưa được cấu hình. Vui lòng thêm NEXT_PUBLIC_GOOGLE_CLIENT_ID vào .env.local');
-    }
+    promptGoogle(async (idToken: string) => {
+      try {
+        const response = await authService.googleLogin(idToken);
+        const { accessToken, refreshToken, user } = response.data.data;
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
+        const { setTokens, setUser } = useAuthStore.getState();
+        setTokens(accessToken, refreshToken);
+        setUser(user);
+        message.success('Đăng nhập thành công! Đang chuyển hướng...');
+        setTimeout(() => { router.push('/user/dashboard'); }, 500);
+      } catch (err: unknown) {
+        const error = err as { response?: { data?: { error?: { message?: string } } } };
+        message.error(error.response?.data?.error?.message || 'Đăng nhập Google thất bại. Vui lòng thử lại.');
+      }
+    });
   };
 
   return (

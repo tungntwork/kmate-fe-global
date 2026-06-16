@@ -12,6 +12,7 @@ import {
   TrophyOutlined,
   ShoppingOutlined,
   FileTextOutlined,
+  MailOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   UserOutlined,
@@ -33,6 +34,7 @@ const adminNavItems = [
   { key: '/admin/achievements', icon: <TrophyOutlined />, label: 'Thành tựu', href: '/admin/achievements' },
   { key: '/admin/packages', icon: <ShoppingOutlined />, label: 'Gói Coin', href: '/admin/packages' },
   { key: '/admin/logs', icon: <FileTextOutlined />, label: 'Nhật ký', href: '/admin/logs' },
+  { key: '/admin/reports', icon: <MailOutlined />, label: 'Báo cáo', href: '/admin/reports' },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

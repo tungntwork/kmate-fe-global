@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import imgKMATELOGO from '../../../assets/img/branding/KMATELOGO.png';
 import { authService } from '@/lib/api-services';
 import { useAuthStore } from '@/store/auth.store';
+import { useGoogleAuth } from '@/hooks/use-google-auth';
 
 export function LoginPage() {
   const { message } = App.useApp();
@@ -20,6 +21,7 @@ export function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { promptGoogle } = useGoogleAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,13 +55,25 @@ export function LoginPage() {
   };
 
   const handleGoogleLogin = () => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    if (clientId) {
-      const redirectUri = `${window.location.origin}/api/auth/google/callback`;
-      window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20email%20profile`;
-    } else {
-      message.warning('Google OAuth chưa được cấu hình. Vui lòng thêm NEXT_PUBLIC_GOOGLE_CLIENT_ID vào .env.local');
-    }
+    promptGoogle(async (idToken: string) => {
+      try {
+        const response = await authService.googleLogin(idToken);
+        const { accessToken, refreshToken, user } = response.data.data;
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
+        const { setTokens, setUser } = useAuthStore.getState();
+        setTokens(accessToken, refreshToken);
+        setUser(user);
+        message.success('Đăng nhập thành công! Đang chuyển hướng...');
+        const dashboardPath = (user.role === 'ADMIN' || user.role === 'MODERATOR')
+          ? '/admin/dashboard'
+          : '/user/dashboard';
+        setTimeout(() => { router.push(dashboardPath); }, 500);
+      } catch (err: unknown) {
+        const error = err as { response?: { data?: { error?: { message?: string } } } };
+        message.error(error.response?.data?.error?.message || 'Đăng nhập Google thất bại. Vui lòng thử lại.');
+      }
+    });
   };
 
   return (
@@ -97,7 +111,7 @@ export function LoginPage() {
             <div className="flex items-center gap-4">
               <Link href="/login">
                 <Button type="text" className="!text-white/70 !font-semibold !text-sm !px-3 hover:!text-white">
-                  Login
+                  Đăng nhập
                 </Button>
               </Link>
               <Link href="/register">
@@ -105,7 +119,7 @@ export function LoginPage() {
                   className="!font-bold !text-sm !h-9 !px-5 !rounded-xl !border-0 !text-background-dark"
                   style={{ background: 'linear-gradient(135deg, #7C4DFF, #00e5ff)' }}
                 >
-                  Sign Up
+                  Đăng ký
                 </Button>
               </Link>
             </div>
@@ -197,7 +211,7 @@ export function LoginPage() {
                   K-MATE
                 </span>
               </h2>
-              <p className="text-slate-400 text-sm">Continue your Korean learning journey.</p>
+              <p className="text-slate-400 text-sm">Hành trình tiếp tục học tiếng Hàn cùng KMATE</p>
             </div>
 
             {/* Form */}
@@ -205,7 +219,7 @@ export function LoginPage() {
               {/* Email */}
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                  Email Address
+                  Email
                 </label>
                 <Input
                   size="large"
@@ -250,14 +264,14 @@ export function LoginPage() {
                   className="[&_.ant-checkbox-inner]:!bg-slate-900/50 [&_.ant-checkbox-inner]:!border-slate-700/50 [&_.ant-checkbox-checked_.ant-checkbox-inner]:!bg-[#00e5ff] [&_.ant-checkbox-checked_.ant-checkbox-inner]:!border-[#00e5ff] [&_.ant-checkbox-wrapper:hover_.ant-checkbox-inner]:!border-[#00e5ff]/50"
                 >
                   <span className="text-slate-400 hover:text-slate-200 transition-colors cursor-pointer select-none">
-                    Remember me
+                    Ghi nhớ tôi
                   </span>
                 </Checkbox>
                 <Link
                   href="/forgot-password"
                   className="text-[#00e5ff] hover:text-[#00e5ff]/80 font-semibold transition-colors"
                 >
-                  Forgot password?
+                  Quên mật khẩu?
                 </Link>
               </div>
 
@@ -288,14 +302,14 @@ export function LoginPage() {
                   boxShadow: '0 0 15px rgba(124,77,255,0.3), 0 4px 12px rgba(0,0,0,0.3)',
                 }}
               >
-                Login to Your Account
+                Đăng nhập vào tài khoản của bạn
               </Button>
 
               {/* Divider */}
               <div className="relative flex items-center justify-center my-6">
                 <div className="w-full border-t border-slate-800" />
                 <span className="absolute px-3 bg-background-dark text-slate-500 text-xs font-bold uppercase">
-                  or login with
+                  hoặc đăng nhập với
                 </span>
               </div>
 
@@ -314,7 +328,7 @@ export function LoginPage() {
                   </svg>
                 }
               >
-                Continue with Google
+                Đăng nhập với Google
               </Button>
             </form>
 
@@ -322,7 +336,7 @@ export function LoginPage() {
             <p className="text-center mt-8 text-slate-400 text-sm relative z-10">
               Don&apos;t have an account?{' '}
               <Link href="/register" className="text-[#00e5ff] font-bold hover:underline ml-1">
-                Create Free Account
+                Tạo tài khoản miễn phí
               </Link>
             </p>
           </div>
@@ -336,7 +350,7 @@ export function LoginPage() {
       {/* ===== FOOTER ===== */}
       <footer className="fixed bottom-0 left-0 right-0 p-6 text-center z-0 opacity-40">
         <p className="text-xs text-slate-500 tracking-widest uppercase font-bold">
-          Powered by NeuralCore 4.0 &copy; 2026 K-MATE Labs
+          Cung cấp bởi K-MATE 4.0 &copy; 2026 K-MATE Labs
         </p>
       </footer>
     </div>

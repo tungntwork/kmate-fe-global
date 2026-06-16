@@ -16,6 +16,7 @@ import {
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
+import { useEffect } from 'react';
 import imgKMATELOGO from '../../../assets/img/branding/KMATELOGO.png';
 import imgKMATEICO from '../../../assets/img/branding/KMATEICO.ico';
 import { useSidebarStore } from '@/store/sidebar.store';
@@ -36,9 +37,15 @@ const navItems = [
 export function UserSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { collapsed, setCollapsed } = useSidebarStore();
+  const { collapsed, setCollapsed, activeKey, setActiveKey } = useSidebarStore();
 
-  const activeKey = navItems.find((item) => pathname.startsWith(item.key))?.key ?? '/user/dashboard';
+  // Sync activeKey from URL into the store — single source of truth
+  useEffect(() => {
+    const matchedKey = navItems.find((item) => pathname.startsWith(item.key))?.key;
+    if (matchedKey && matchedKey !== activeKey) {
+      setActiveKey(matchedKey);
+    }
+  }, [pathname, activeKey, setActiveKey]);
 
   return (
     <Sider
@@ -96,6 +103,7 @@ export function UserSidebar() {
               mode="inline"
               theme="dark"
               className="!bg-transparent !border-0"
+              selectedKeys={[activeKey]}
               items={[menuItem]}
               onClick={() => router.push(item.href)}
             />

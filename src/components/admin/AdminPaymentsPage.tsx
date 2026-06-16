@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import {
-  SearchOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
+  CheckOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
-import { Table, Button, Tag, Spin, Select,  } from "antd";
+import { Table, Button, Tag, Spin, Select, Popconfirm, message } from 'antd';
 import { App } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -34,12 +35,13 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function AdminPaymentsPage() {
-  const { message } = App.useApp();
+  const { message: messageApi } = App.useApp();
   const [payments, setPayments] = useState<AdminPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const load = async (pg = 1, s = status) => {
     setLoading(true);
@@ -48,11 +50,37 @@ export default function AdminPaymentsPage() {
       setPayments(res.data.data);
       setTotal(res.data.pagination.total);
       setPage(pg);
-    } catch { message.error('Lỗi tải giao dịch'); }
+    } catch { messageApi.error('Lỗi tải danh sách thanh toán'); }
     finally { setLoading(false); }
   };
 
   useEffect(() => { load(1, ''); }, []);
+
+  const handleApprove = async (paymentId: string) => {
+    setActionLoading(paymentId);
+    try {
+      const res = await adminService.approvePayment(paymentId);
+      messageApi.success(res.data.message);
+      load(page, status);
+    } catch {
+      messageApi.error('Lỗi xác nhận thanh toán');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReject = async (paymentId: string) => {
+    setActionLoading(paymentId);
+    try {
+      const res = await adminService.rejectPayment(paymentId);
+      messageApi.success(res.data.message);
+      load(page, status);
+    } catch {
+      messageApi.error('Lỗi từ chối thanh toán');
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const columns: ColumnsType<AdminPayment> = [
     {
@@ -110,6 +138,59 @@ export default function AdminPaymentsPage() {
           {record.paidAt && <p className="text-slate-500 text-xs">Thanh toán: {dayjs(record.paidAt).format('DD/MM/YY HH:mm')}</p>}
         </div>
       ),
+    },
+    {
+      title: 'Hành động',
+      key: 'action',
+      width: 180,
+      render: (_, record) => {
+        if (record.status !== 'PENDING') {
+          return <span className="text-slate-600 text-xs">—</span>;
+        }
+        const isLoading = actionLoading === record.id || actionLoading === `reject-${record.id}`;
+        return (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Popconfirm
+              title="Xác nhận thanh toán?"
+              description={`Cộng ${record.coinAmount} coins cho ${record.user.name || record.user.email}`}
+              okText="Xác nhận"
+              cancelText="Huỷ"
+              okButtonProps={{ danger: false, loading: actionLoading === record.id }}
+              onConfirm={() => handleApprove(record.id)}
+              disabled={isLoading}
+            >
+              <Button
+                size="small"
+                type="primary"
+                icon={<CheckCircleOutlined />}
+                loading={actionLoading === record.id}
+                style={{ borderRadius: 8, background: 'linear-gradient(135deg, #22c55e, #16a34a)', border: 'none', color: '#fff', fontWeight: 600 }}
+              >
+                Xác nhận
+              </Button>
+            </Popconfirm>
+            <Popconfirm
+              title="Từ chối thanh toán?"
+              description="Đánh dấu thanh toán này là thất bại."
+              okText="Từ chối"
+              cancelText="Huỷ"
+              okButtonProps={{ danger: true, loading: actionLoading === `reject-${record.id}` }}
+              onConfirm={() => handleReject(record.id)}
+              disabled={isLoading}
+            >
+              <Button
+                size="small"
+                danger
+                icon={<CloseCircleOutlined />}
+                loading={actionLoading === `reject-${record.id}`}
+                style={{ borderRadius: 8 }}
+              >
+                Từ chối
+              </Button>
+            </Popconfirm>
+          </div>
+        );
+      },
     },
   ];
 
