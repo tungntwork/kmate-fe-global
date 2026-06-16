@@ -108,7 +108,7 @@ export const PlayerControls = memo(function PlayerControls({ onOpenSettings }: P
                 <Tooltip title={isPlaying ? 'Pause (k)' : 'Play (k)'}>
                   <button
                     onClick={togglePlay}
-                    className="text-white hover:text-primary-400 transition-colors p-1"
+                    className="text-white hover:text-primary-400 transition-colors p-1 hover:bg-[#cccccc20]"
                     aria-label={isPlaying ? 'Pause' : 'Play'}
                   >
                     {isPlaying ? (
@@ -124,7 +124,7 @@ export const PlayerControls = memo(function PlayerControls({ onOpenSettings }: P
                   <Tooltip title={settings.muted ? 'Unmute (m)' : 'Mute (m)'}>
                     <button
                       onClick={toggleMute}
-                      className="text-white hover:text-primary-400 transition-colors"
+                      className="text-white hover:text-primary-400 transition-colors hover:bg-[#cccccc20]"
                       aria-label={settings.muted ? 'Unmute' : 'Mute'}
                     >
                       {settings.muted || settings.volume === 0 ? (
@@ -160,7 +160,7 @@ export const PlayerControls = memo(function PlayerControls({ onOpenSettings }: P
                 {/* Speed selector */}
                 <div className="relative group/speed">
                   <button
-                    className="text-white hover:text-primary-400 transition-colors px-2 py-1 text-sm font-medium rounded hover:bg-white/10"
+                    className="text-white hover:text-primary-400 transition-colors px-2 py-1 text-sm font-medium rounded hover:bg-[#cccccc20]"
                     aria-label="Playback speed"
                   >
                     {SPEED_LABELS[settings.speed]}
@@ -188,7 +188,7 @@ export const PlayerControls = memo(function PlayerControls({ onOpenSettings }: P
                 <Tooltip title={settings.subtitleVisible ? 'Ẩn phụ đề (c)' : 'Hiện phụ đề (c)'}>
                   <button
                     onClick={toggleSubtitle}
-                    className={`text-white hover:text-primary-400 transition-colors px-2 py-1 text-sm rounded hover:bg-white/10 ${
+                    className={`text-white hover:text-primary-400 transition-colors px-2 py-1 text-sm rounded hover:bg-[#cccccc20] ${
                       settings.subtitleVisible ? 'text-primary-400' : ''
                     }`}
                     aria-label="Toggle subtitles"
@@ -201,7 +201,7 @@ export const PlayerControls = memo(function PlayerControls({ onOpenSettings }: P
                 <Tooltip title="Vị trí phụ đề">
                   <button
                     onClick={toggleSubtitlePosition}
-                    className="text-white hover:text-primary-400 transition-colors"
+                    className="text-white hover:text-primary-400 transition-colors hover:bg-[#cccccc20]"
                     aria-label="Toggle subtitle position"
                   > 
                     {settings.subtitlePosition === 'bottom' ? (
@@ -217,7 +217,7 @@ export const PlayerControls = memo(function PlayerControls({ onOpenSettings }: P
                   <Tooltip title="Settings">
                     <button
                       onClick={onOpenSettings}
-                      className="text-white hover:text-primary-400 transition-colors"
+                      className="text-white hover:text-primary-400 transition-colors hover:bg-[#cccccc20]"
                       aria-label="Settings"
                     >
                       <SettingOutlined className="text-xl" />
@@ -229,7 +229,7 @@ export const PlayerControls = memo(function PlayerControls({ onOpenSettings }: P
                 <Tooltip title={isFullscreen ? 'Thoát toàn màn hình (f)' : 'Toàn màn hình (f)'}>
                   <button
                     onClick={toggleFullscreen}
-                    className="text-white hover:text-primary-400 transition-colors"
+                    className="text-white hover:text-primary-400 transition-colors hover:bg-[#cccccc20]"
                     aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
                   >
                     {isFullscreen ? (

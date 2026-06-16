@@ -3,13 +3,15 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useState } from 'react';
-import { Button, Input, message } from 'antd';
+import { Button, Input } from 'antd';
+import { App } from 'antd';
 import { MailOutlined } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import imgKMATELOGO from '../../../assets/img/branding/KMATELOGO.png';
 import { authService } from '@/lib/api-services';
 
 export function ForgotPasswordPage() {
+  const { message } = App.useApp();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);

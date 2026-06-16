@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Button, Spin, Modal, message } from 'antd';
+import { Button, Spin, Modal } from "antd";
+import { App } from 'antd';
 import {
   ArrowLeftOutlined,
   FireOutlined,
@@ -783,6 +784,7 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, 
 }
 
 export default function UserFlashcardPage() {
+  const { message } = App.useApp();
   const [decks, setDecks] = useState<FlashcardDeck[]>([]);
   const [dueCards, setDueCards] = useState<Flashcard[]>([]);
   const [stats, setStats] = useState<FlashcardStats | null>(null);

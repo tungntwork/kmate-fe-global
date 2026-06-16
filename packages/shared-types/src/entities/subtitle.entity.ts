@@ -62,15 +62,15 @@ export interface SubtitleGenerationResponse {
 }
 
 export const SUBTITLE_STAGE_LABELS: Record<string, string> = {
-  PENDING: 'Preparing...',
-  QUEUED: 'In queue...',
-  DOWNLOADING: 'Downloading video...',
-  EXTRACTING_AUDIO: 'Extracting audio...',
-  TRANSCRIBING: 'Transcribing with AI...',
-  TRANSLATING: 'Translating subtitles...',
-  SYNCING: 'Syncing subtitles...',
-  UPLOADING: 'Saving subtitles...',
-  COMPLETED: 'Ready!',
-  FAILED: 'Failed',
-  DEAD_LETTER: 'Failed',
+  PENDING: 'Đang chuẩn bị...',
+  QUEUED: 'Đang chờ...',
+  DOWNLOADING: 'Đang tải video...',
+  EXTRACTING_AUDIO: 'Đang trích xuất âm thanh...',
+  TRANSCRIBING: 'Đang phụ đề hóa với AI...',
+  TRANSLATING: 'Đang dịch phụ đề...',
+  SYNCING: 'Đang đồng bộ phụ đề...',
+  UPLOADING: 'Đang lưu phụ đề...',
+  COMPLETED: 'Sẵn sàng!',
+  FAILED: 'Thất bại',
+  DEAD_LETTER: 'Thất bại',
 };

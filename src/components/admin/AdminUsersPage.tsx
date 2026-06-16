@@ -7,12 +7,14 @@ import {
   StopOutlined,
   CheckCircleOutlined,
 } from '@ant-design/icons';
-import { Table, Input, Button, Tag, Avatar, Spin, Modal, Popconfirm, message } from 'antd';
+import { Table, Input, Button, Tag, Avatar, Spin, Modal, Popconfirm,  } from "antd";
+import { App } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useRouter } from 'next/navigation';
 import { adminService, type AdminUser } from '@/lib/api-services';
 
 export default function AdminUsersPage() {
+  const { message } = App.useApp();
   const router = useRouter();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);

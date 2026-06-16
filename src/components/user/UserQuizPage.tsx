@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Spin, Modal, message } from 'antd';
+import { Button, Spin, Modal,  } from "antd";
+import { App } from 'antd';
 import {
   QuestionOutlined,
   CheckCircleOutlined,
@@ -799,6 +800,7 @@ function ResultScreen({
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function UserQuizPage() {
+  const { message } = App.useApp();
   const { session, startQuiz, resumeFromServer, setResult, setError, reset } = useQuizStore();
 
   const [screen, setScreen] = useState<Screen>('home');

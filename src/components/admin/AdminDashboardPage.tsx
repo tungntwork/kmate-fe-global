@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { Spin } from 'antd';
+import { App } from 'antd';
 import {
   UserOutlined,
   VideoCameraOutlined,
@@ -11,7 +13,6 @@ import {
   TeamOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
-import { Spin, message } from 'antd';
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area,
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
@@ -172,6 +173,7 @@ const commonAxis = {
 } as any;
 
 export default function AdminDashboardPage() {
+  const { message } = App.useApp();
   const router = useRouter();
   const [data, setData] = useState<AdminDashboard | null>(null);
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);

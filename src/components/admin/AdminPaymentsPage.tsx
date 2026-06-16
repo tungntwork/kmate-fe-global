@@ -7,7 +7,8 @@ import {
   ClockCircleOutlined,
   CloseCircleOutlined,
 } from '@ant-design/icons';
-import { Table, Button, Tag, Spin, Select, message } from 'antd';
+import { Table, Button, Tag, Spin, Select,  } from "antd";
+import { App } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { adminService, type AdminPayment } from '@/lib/api-services';
@@ -33,6 +34,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function AdminPaymentsPage() {
+  const { message } = App.useApp();
   const [payments, setPayments] = useState<AdminPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('');

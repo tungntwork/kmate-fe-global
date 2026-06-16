@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { Typography, Button, Spin, message } from 'antd';
+import { Typography, Button, Spin,  } from "antd";
+import { App } from 'antd';
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWaitingStore } from '@/store/waiting.store';
@@ -23,6 +24,7 @@ const TIMEOUT_WARNING_THRESHOLD = 15 * 60; // 15 minutes
 const TIMEOUT_THRESHOLD = 30 * 60; // 30 minutes
 
 function WaitingPageContent() {
+  const { message } = App.useApp();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -385,6 +387,7 @@ function WaitingPageContent() {
 }
 
 export default function WaitingPage() {
+  const { message } = App.useApp();
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-dark-500 flex items-center justify-center">

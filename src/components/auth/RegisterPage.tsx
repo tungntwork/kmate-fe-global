@@ -4,7 +4,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Input, Checkbox, message } from 'antd';
+import { Button, Input, Checkbox } from 'antd';
+import { App } from 'antd';
 import { MailOutlined, LockOutlined, UserOutlined, EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import imgKMATELOGO from '../../../assets/img/branding/KMATELOGO.png';
@@ -12,6 +13,7 @@ import { authService } from '@/lib/api-services';
 import { useAuthStore } from '@/store/auth.store';
 
 export function RegisterPage() {
+  const { message } = App.useApp();
   const router = useRouter();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');

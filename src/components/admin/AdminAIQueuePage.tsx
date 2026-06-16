@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Table, Tag, Button, Spin, Select, Popconfirm, message } from 'antd';
+import { Table, Tag, Button, Spin, Select, Popconfirm,  } from "antd";
+import { App } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -63,6 +64,7 @@ const STAGE_ICONS: Record<string, string> = {
 };
 
 export default function AdminAIQueuePage() {
+  const { message } = App.useApp();
   const [jobs, setJobs] = useState<AIJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('');

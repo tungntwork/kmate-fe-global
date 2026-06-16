@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Table, Button, Tag, Spin, Input, Modal, message } from 'antd';
+import { Table, Button, Tag, Spin, Input, Modal,  } from "antd";
+import { App } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, EditOutlined } from '@ant-design/icons';
 import { adminService, type Achievement, type AchievementInput } from '@/lib/api-services';
@@ -20,6 +21,7 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function AdminAchievementsPage() {
+  const { message } = App.useApp();
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [loading, setLoading] = useState(true);
   const [editModal, setEditModal] = useState(false);

@@ -75,6 +75,7 @@ export function SubtitleControlBar({
           icon={loadingSubtitle ? <LoadingOutlined /> : <TranslationOutlined />}
           onClick={() => setVisible((v) => !v)}
           disabled={!subtitle && !processingJob}
+          className="[&:hover]:!bg-[#cccccc20]"
         >
           {subtitle ? 'CC' : 'No subs'}
         </Button>
@@ -94,7 +95,7 @@ export function SubtitleControlBar({
             }}
             trigger={['click']}
           >
-            <Button size="small" icon={<GlobalOutlined />}>
+            <Button size="small" icon={<GlobalOutlined />} className="[&:hover]:!bg-[#cccccc20]">
               {languageLabels[selectedLanguage] ?? selectedLanguage}
             </Button>
           </Dropdown>
@@ -107,6 +108,7 @@ export function SubtitleControlBar({
                   size="small"
                   type={displayMode === mode ? 'primary' : 'default'}
                   onClick={() => handleDisplayModeChange(mode)}
+                  className="[&:hover]:!bg-[#cccccc20]"
                 >
                   {mode === 'original' ? 'KO' : mode === 'translation' ? 'VI' : 'BOTH'}
                 </Button>

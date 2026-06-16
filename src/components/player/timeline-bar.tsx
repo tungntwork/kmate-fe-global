@@ -138,6 +138,8 @@ export const TimelineBar = memo(function TimelineBar() {
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      // Clear isSeeking immediately so rAF resumes without waiting for the setTimeout
+      usePlayerStore.setState({ isSeeking: false });
     };
 
     window.addEventListener('mousemove', handleMouseMoveGlobal);

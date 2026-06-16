@@ -9,7 +9,8 @@ import {
   CheckCircleOutlined,
   LoadingOutlined,
 } from '@ant-design/icons';
-import { Card, Table, Tag, Button, Tabs, Empty, Spin, Modal, Select, message } from 'antd';
+import { Card, Table, Tag, Button, Tabs, Empty, Spin, Modal, Select,  } from "antd";
+import { App } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -46,6 +47,7 @@ const COIN_TYPE_LABELS: Record<string, string> = {
 };
 
 export default function UserWalletPage() {
+  const { message } = App.useApp();
   const { user, updateCoinBalance } = useAuthStore();
   const [balance, setBalance] = useState<CoinBalance | null>(null);
   const [transactions, setTransactions] = useState<CoinTransaction[]>([]);

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Button, Input, Select, Spin, message } from 'antd';
+import { Button, Input, Select, Spin,  } from "antd";
+import { App } from 'antd';
 import { VideoCameraOutlined, CheckOutlined, ArrowLeftOutlined, ArrowRightOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { videoService, flashcardService, subtitleService, type FlashcardDeck } from '@/lib/api-services';
 import { useRouter } from 'next/navigation';
@@ -66,6 +67,7 @@ function extractWord(koText: string): string {
 // ── Step 1: Video Grid ───────────────────────────────────────────────────────
 
 function VideoGridStep({ onSelect }: { onSelect: (video: WatchedVideo) => void }) {
+  const { message } = App.useApp();
   const [videos, setVideos] = useState<WatchedVideo[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -173,6 +175,7 @@ function SubtitlePickerStep({
   onNext: (selected: SelectedCard[]) => void;
   onBack: () => void;
 }) {
+  const { message } = App.useApp();
   const [koSegments, setKoSegments] = useState<SubtitleSegment[]>([]);
   const [biSegments, setBiSegments] = useState<BilingualSegment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -374,6 +377,7 @@ function CardEditorStep({
   onBack: () => void;
   onComplete: () => void;
 }) {
+  const { message } = App.useApp();
   const [cards, setCards] = useState<SelectedCard[]>(selectedCards);
   const [decks, setDecks] = useState<FlashcardDeck[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
@@ -575,6 +579,7 @@ function CardEditorStep({
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function CreateFromVideoView() {
+  const { message } = App.useApp();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedVideo, setSelectedVideo] = useState<WatchedVideo | null>(null);
   const [selectedCards, setSelectedCards] = useState<SelectedCard[]>([]);

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Table, Tag, Spin, Select, message } from 'antd';
+import { Table, Tag, Spin, Select,  } from "antd";
+import { App } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { adminService, type AdminLog } from '@/lib/api-services';
@@ -55,6 +56,7 @@ const TARGET_TYPE_LABELS: Record<string, string> = {
 };
 
 export default function AdminLogsPage() {
+  const { message } = App.useApp();
   const [logs, setLogs] = useState<AdminLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState('');

@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { Button, Drawer, Typography, Tooltip, Spin, Modal, message } from 'antd';
+import { Button, Drawer, Typography, Tooltip, Spin, Modal } from 'antd';
+import { App } from 'antd';
 import {
   ArrowLeftOutlined,
   MenuOutlined,
@@ -49,6 +50,7 @@ function mapSegment(seg: any) {
 }
 
 export default function LearningPlayerPage() {
+  const { message } = App.useApp();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -121,7 +123,7 @@ export default function LearningPlayerPage() {
     autoStart: true,
   });
 
-  useKeyboardShortcuts({ enabled: true });
+  useKeyboardShortcuts({ enabled: true, targetRef: containerRef });
 
   const { items: vocabItems, totalCount: vocabCount, saveWord } = useVocabulary();
 

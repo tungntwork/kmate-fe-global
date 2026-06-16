@@ -115,20 +115,24 @@ export function VideoPlayer({
             const yt = playerRef.current;
             switch (event.data) {
               case window.YT.PlayerState.PLAYING:
-                usePlayerStore.getState().play();
+                // YouTube already playing — just sync store state, don't call playVideo() again
+                usePlayerStore.setState({ isPlaying: true, pausedByUser: false, pausedByHover: false });
                 if (yt?.getCurrentTime) {
                   usePlayerStore.getState().setCurrentTime(yt.getCurrentTime());
                 }
                 onPlayRef.current?.();
                 break;
               case window.YT.PlayerState.PAUSED:
-                usePlayerStore.getState().pause();
+                // YouTube already paused — sync store without marking as user-initiated pause
+                // (buffering / network stall also fires PAUSED; user pause sets pausedByUser via pause() action)
+                usePlayerStore.setState({ isPlaying: false, pausedByUser: false, pausedByHover: false });
                 if (yt?.getCurrentTime) {
                   usePlayerStore.getState().setCurrentTime(yt.getCurrentTime());
                 }
                 onPauseRef.current?.();
                 break;
               case window.YT.PlayerState.ENDED:
+                usePlayerStore.setState({ isPlaying: false, pausedByUser: true });
                 onEndedRef.current?.();
                 break;
             }
@@ -143,10 +147,13 @@ export function VideoPlayer({
       let rafId: number;
       const syncProgress = () => {
         if (playerRef.current?.getCurrentTime) {
-          const time = playerRef.current.getCurrentTime();
-          // Update store only when segment changes (subtitle sync handles this via useSubtitleSync)
-          // Store update here is for display only — throttle to avoid cascading re-renders
-          usePlayerStore.getState().setCurrentTime(time);
+          const { isSeeking, isPlaying } = usePlayerStore.getState();
+          // Don't override currentTime while seek is in flight — let it settle
+          // before the rAF loop resumes overwriting the user-seeked position
+          if (!isSeeking) {
+            const time = playerRef.current.getCurrentTime();
+            usePlayerStore.getState().setCurrentTime(time);
+          }
         }
         rafId = requestAnimationFrame(syncProgress);
       };

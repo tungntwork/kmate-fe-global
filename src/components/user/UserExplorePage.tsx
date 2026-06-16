@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Spin, Input, Select, message } from 'antd';
+import { Spin, Input, Select } from "antd";
+import { App } from 'antd';
 import {
   PlayCircleOutlined,
   PlusOutlined,
@@ -53,6 +54,7 @@ const LEVEL_MAP: Record<string, string> = {
 };
 
 export default function UserExplorePage() {
+  const { message } = App.useApp();
   const router = useRouter();
   const [featured, setFeatured] = useState<VideoSearchResult[]>([]);
   const [currentSlide, setCurrentSlide] = useState(0);

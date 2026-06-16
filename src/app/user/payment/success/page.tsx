@@ -2,7 +2,8 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Result, Spin, Button, Card, Typography, Descriptions, message } from 'antd';
+import { Result, Spin, Button, Card, Typography, Descriptions } from "antd";
+import { App } from 'antd';
 import {
   CheckCircleOutlined,
   HomeOutlined,
@@ -15,6 +16,7 @@ import { useAuthStore } from '@/store/auth.store';
 const { Title, Text } = Typography;
 
 function PaymentSuccessContent() {
+  const { message } = App.useApp();
   const searchParams = useSearchParams();
   const router = useRouter();
   const { updateCoinBalance } = useAuthStore();
@@ -200,6 +202,7 @@ function PaymentSuccessContent() {
 }
 
 export default function PaymentSuccessPage() {
+  const { message } = App.useApp();
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-[60vh]">

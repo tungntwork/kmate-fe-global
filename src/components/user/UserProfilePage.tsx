@@ -11,12 +11,14 @@ import {
   EditOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
-import { Card, Avatar, Button, Input, Tag, Spin, Switch, Divider, message } from 'antd';
+import { Card, Avatar, Button, Input, Tag, Spin, Switch, Divider,  } from "antd";
+import { App } from 'antd';
 import { userService, authService, type UserProfile, type UserStatistics, type UserAchievement } from '@/lib/api-services';
 import { useAuthStore } from '@/store/auth.store';
 import dayjs from 'dayjs';
 
 export default function UserProfilePage() {
+  const { message } = App.useApp();
   const { user, setUser } = useAuthStore();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<UserStatistics | null>(null);

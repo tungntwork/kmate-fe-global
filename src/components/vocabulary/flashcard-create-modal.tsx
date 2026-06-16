@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Button, Input, Select, message } from 'antd';
+import { Button, Input, Select,  } from "antd";
+import { App } from 'antd';
 import { PlusOutlined, VideoCameraOutlined, CheckOutlined, XOutlined } from '@ant-design/icons';
 import { flashcardService } from '@/lib/api-services';
 
@@ -34,6 +35,7 @@ export function FlashcardCreateModal({
   onClose,
   onCreated,
 }: FlashcardCreateModalProps) {
+  const { message } = App.useApp();
   const [deckName, setDeckName] = useState('');
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [mode, setMode] = useState<'new' | 'existing'>('new');

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Result, Spin, Button, Card, Typography, message } from 'antd';
+import { Result, Spin, Button, Card, Typography,  } from "antd";
 import {
   CloseCircleOutlined,
   WalletOutlined,
@@ -12,7 +12,9 @@ import { paymentService } from '@/lib/api-services';
 
 const { Title, Text } = Typography;
 
+import { App } from 'antd';
 export default function PaymentCancelPage() {
+  const { message } = App.useApp();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [loading, setLoading] = useState(true);

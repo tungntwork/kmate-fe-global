@@ -42,8 +42,10 @@ interface PlayerState {
   currentTime: number;
   duration: number;
   buffered: number;
+  isSeeking: boolean;
   isLoading: boolean;
   pausedByHover: boolean; // true when video was auto-paused due to hover
+  pausedByUser: boolean; // true when user intentionally paused
   hasError: boolean;
   errorMessage: string;
   isFullscreen: boolean;
@@ -122,8 +124,10 @@ const initialState: PlayerState = {
   currentTime: 0,
   duration: 0,
   buffered: 0,
+  isSeeking: false,
   isLoading: false,
   pausedByHover: false,
+  pausedByUser: false,
   hasError: false,
   errorMessage: '',
   isFullscreen: false,
@@ -175,7 +179,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         } else {
           (player as unknown as { play: () => void }).play?.();
         }
-        set({ isPlaying: true, pausedByHover: false });
+        set({ isPlaying: true, pausedByHover: false, pausedByUser: false });
       },
 
       pause: () => {
@@ -186,7 +190,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         } else {
           (player as unknown as { pause: () => void }).pause?.();
         }
-        set({ isPlaying: false, pausedByHover: false });
+        set({ isPlaying: false, pausedByHover: false, pausedByUser: true });
       },
 
       togglePlay: () => {
@@ -206,13 +210,19 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
         if (typeof (player as unknown as { seekTo: (t: number, a: boolean) => void }).seekTo === 'function') {
           (player as unknown as { seekTo: (t: number, a: boolean) => void }).seekTo(clampedTime, true);
         }
-        set({ currentTime: clampedTime });
+        set({ currentTime: clampedTime, isSeeking: true, isPlaying: true });
+        // Resume playback on YouTube — seek alone leaves the player paused
+        try { player.playVideo(); } catch (_) {}
+        // Let YouTube settle before resuming rAF updates (500ms covers network latency)
+        setTimeout(() => set({ isSeeking: false }), 500);
       },
 
       seekRelative: (delta) => {
         const { currentTime, duration } = get();
         const newTime = Math.max(0, Math.min(currentTime + delta, duration));
+        set({ isSeeking: true });
         get().seek(newTime);
+        setTimeout(() => set({ isSeeking: false }), 500);
       },
 
       setCurrentTime: (currentTime) => set({ currentTime }),

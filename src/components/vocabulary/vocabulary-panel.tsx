@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback, useMemo, memo } from 'react';
-import { Button, Tooltip, message } from 'antd';
+import { Button, Tooltip,  } from "antd";
+import { App } from 'antd';
 import { SoundOutlined, PlusOutlined, CaretDownOutlined, CaretRightOutlined } from '@ant-design/icons';
 import { ConfirmModal } from '../common/confirm-modal';
 
@@ -103,16 +104,14 @@ function WordRow({
 
         {/* Delete button */}
         {onDelete && (
-          <Tooltip title="Xóa">
-            <button
-              onClick={onDelete}
-              className="text-gray-400 hover:text-red-400 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </Tooltip>
+          <button
+            onClick={onDelete}
+            className="text-gray-400 hover:text-red-400 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         )}
       </div>
 
@@ -147,6 +146,7 @@ export const VocabularyPanel = memo(function VocabularyPanel({
   onWordDelete,
   onCreateFlashcards,
 }: VocabularyPanelProps) {
+  const { message } = App.useApp();
   const [deleteTarget, setDeleteTarget] = useState<VocabWord | null>(null);
 
   // Collapsible section state

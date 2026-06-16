@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Input, message } from 'antd';
+import { Button, Input } from 'antd';
+import { App } from 'antd';
 import { MailOutlined, LockOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
@@ -12,6 +13,7 @@ import { useAuthStore } from '@/store/auth.store';
 import imgKMATELOGO from '../../../../assets/img/branding/KMATELOGO.png';
 
 export default function AdminLoginPage() {
+  const { message } = App.useApp();
   const router = useRouter();
   const { setUser, setTokens } = useAuthStore();
   const [email, setEmail] = useState('');
