@@ -22,6 +22,8 @@ interface VideoPlayerProps {
   onEnded?: () => void;
   onTimeUpdate?: (time: number) => void;
   onError?: (error: string) => void;
+  /** Called when the YouTube player fires its onReady event — use to dismiss loading spinners. */
+  onPlayerReady?: () => void;
 }
 
 export function VideoPlayer({
@@ -32,6 +34,8 @@ export function VideoPlayer({
   onPlay,
   onPause,
   onEnded,
+  onError,
+  onPlayerReady,
 }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<globalThis.YT.Player | null>(null);
@@ -43,10 +47,14 @@ export function VideoPlayer({
   const onPlayRef = useRef(onPlay);
   const onPauseRef = useRef(onPause);
   const onEndedRef = useRef(onEnded);
+  const onErrorRef = useRef(onError);
+  const onPlayerReadyRef = useRef(onPlayerReady);
   onReadyRef.current = onReady;
   onPlayRef.current = onPlay;
   onPauseRef.current = onPause;
   onEndedRef.current = onEnded;
+  onErrorRef.current = onError;
+  onPlayerReadyRef.current = onPlayerReady;
 
   const { setIsFullscreen, setPlayerRef } = usePlayerStore();
 
@@ -95,7 +103,7 @@ export function VideoPlayer({
           ...(startTime > 0 ? { start: Math.floor(startTime) } : {}),
         },
         events: {
-          onReady: (event) => {
+            onReady: (event) => {
             const yt = event.target;
             setPlayerRef(yt);
             const duration = yt.getDuration();
@@ -110,6 +118,7 @@ export function VideoPlayer({
               iframe.style.pointerEvents = 'none';
             } catch (_) {}
             onReadyRef.current?.();
+            onPlayerReadyRef.current?.();
           },
           onStateChange: (event) => {
             const yt = playerRef.current;
@@ -135,7 +144,23 @@ export function VideoPlayer({
                 usePlayerStore.setState({ isPlaying: false, pausedByUser: true });
                 onEndedRef.current?.();
                 break;
+              case -1: // UNSTARTED
+                // Treat as a recoverable error — player may still load
+                break;
+              default:
+                break;
             }
+          },
+          onError: (event) => {
+            const errorCodes: Record<number, string> = {
+              2: 'Video ID không hợp lệ',
+              5: 'Lỗi tải video (HTML5)',
+              100: 'Video không tồn tại hoặc đã bị gỡ',
+              101: 'Video không cho phép nhúng',
+              150: 'Video không cho phép nhúng',
+            };
+            const msg = errorCodes[event.data] ?? `Lỗi video (code: ${event.data})`;
+            onErrorRef.current?.(msg);
           },
         },
       });
@@ -145,14 +170,20 @@ export function VideoPlayer({
       // DOM-only update for progress bar — runs at display refresh rate via rAF,
       // bypasses React re-renders entirely so the progress bar never jitters.
       let rafId: number;
+      let lastSyncedTime = -1;
       const syncProgress = () => {
         if (playerRef.current?.getCurrentTime) {
-          const { isSeeking, isPlaying } = usePlayerStore.getState();
+          const { isSeeking } = usePlayerStore.getState();
           // Don't override currentTime while seek is in flight — let it settle
-          // before the rAF loop resumes overwriting the user-seeked position
+          // before the rAF loop resumes overwriting the user-seeked position.
+          // Only update store when time has changed by at least 0.1s to avoid
+          // triggering re-renders on every rAF frame with floating-point drift.
           if (!isSeeking) {
             const time = playerRef.current.getCurrentTime();
-            usePlayerStore.getState().setCurrentTime(time);
+            if (Math.abs(time - lastSyncedTime) >= 0.1) {
+              lastSyncedTime = time;
+              usePlayerStore.getState().setCurrentTime(time);
+            }
           }
         }
         rafId = requestAnimationFrame(syncProgress);

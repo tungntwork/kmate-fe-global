@@ -112,7 +112,7 @@ export function UserSidebar() {
       </nav>
 
       <div className="absolute bottom-0 left-0 right-0 p-4 space-y-3">
-        {!collapsed && (
+        {/* {!collapsed && (
           <div className="glass rounded-2xl p-4 border border-primary/10 relative overflow-hidden group">
             <div className="absolute -right-2 -top-2 w-16 h-16 bg-primary/10 blur-2xl rounded-full" />
             <p className="text-xs text-slate-400 mb-2">Trợ lý AI của bạn</p>
@@ -121,7 +121,7 @@ export function UserSidebar() {
               <span className="text-xs font-bold text-white">Sẵn sàng hỗ trợ</span>
             </div>
           </div>
-        )}
+        )} */}
 
         <Tooltip title={collapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'} placement="right">
           <Button

@@ -36,6 +36,9 @@ import {
 
 const { Title, Text } = Typography;
 
+const withTimeout = (promise: Promise<any>, ms = 15000) =>
+  Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('Network timeout')), ms))]);
+
 // ── Robust segment field mapper ────────────────────────────────────────────────
 // Handles every possible field name variant the backend might send for both
 // original text and translation, so translations never silently disappear.
@@ -169,31 +172,50 @@ export default function LearningPlayerPage() {
   useEffect(() => {
     if (balanceChecked || !videoId) return;
 
-    setBalanceLoading(true);
-    coinService.getBalance()
-      .then((res) => {
-        setCurrentBalance(res.data.data.balance ?? 0);
-      })
-      .catch(() => {
-        setCurrentBalance(0);
-      })
-      .finally(() => {
-        setBalanceLoading(false);
-        setBalanceChecked(true);
-      });
+    let cancelled = false;
+
+    const checkBalance = async () => {
+      try {
+        const res = await coinService.getBalance();
+        // Guard against 204 / empty body — Axios resolves even with empty body
+        const balance = res?.data?.data?.balance;
+        if (!cancelled) setCurrentBalance(typeof balance === 'number' ? balance : 0);
+      } catch {
+        // Network/server errors → treat as 0 balance so InsufficientBalanceModal handles it
+        if (!cancelled) setCurrentBalance(0);
+      } finally {
+        if (!cancelled) {
+          setBalanceLoading(false);
+          setBalanceChecked(true);
+        }
+      }
+    };
+
+    checkBalance();
+    return () => { cancelled = true; };
   }, [videoId, balanceChecked]);
+
+  // ── Player ready guard — set isLoading=false only once when YouTube fires onReady ────
+  const playerReadyFiredRef = useRef(false);
+  const handlePlayerReady = useCallback(() => {
+    if (playerReadyFiredRef.current) return;
+    playerReadyFiredRef.current = true;
+    setIsLoading(false);
+  }, []);
 
   // ── Load video + subtitles ─────────────────────────────────────────
   useEffect(() => {
     // Skip if balance hasn't been checked yet, or if user has 0 coin (modal is shown)
     if (!balanceChecked || (balanceChecked && currentBalance === 0)) return;
 
+    let fallbackTimer: number | null = null;
+
     const loadContent = async () => {
       setIsLoading(true);
       setLoadError(null);
       try {
-        // 1. Fetch video metadata
-        const videoRes = await videoService.discoverVideo(videoId);
+        // 1. Fetch video metadata (15s timeout)
+        const videoRes = await withTimeout(videoService.discoverVideo(videoId));
         const videoData: VideoDetailResult = videoRes.data.data;
 
         // 2. Map to VideoInfo shape for player store
@@ -206,17 +228,17 @@ export default function LearningPlayerPage() {
           duration: videoData.duration,
         });
 
-        // 3. Unlock video (triggers coin deduction on backend) — must await so DB record is created before subtitle fetch
+        // 3. Unlock video (triggers coin deduction on backend) — must await so DB record is created before subtitle fetch (15s timeout)
         try {
-          await videoService.unlockVideo(videoId);
+          await withTimeout(videoService.unlockVideo(videoId));
         } catch (unlockErr: any) {
           // Non-fatal: video might already be unlocked or free
           console.warn('[Player] unlockVideo failed:', unlockErr?.response?.data ?? unlockErr?.message);
         }
 
-        // 4. Load existing subtitles (video must exist in DB first)
+        // 4. Load existing subtitles (video must exist in DB first) — 15s timeout
         try {
-          const subRes = await subtitleService.getSubtitles(videoId);
+          const subRes = await withTimeout(subtitleService.getSubtitles(videoId));
           if (subRes.data.data.subtitles.length > 0) {
             const subData = subRes.data.data.subtitles[0];
             if (subData.bilingualContent && Array.isArray(subData.bilingualContent)) {
@@ -247,22 +269,35 @@ export default function LearningPlayerPage() {
         }
       } catch (error: any) {
         console.error('Failed to load video:', error);
-        const msg = error?.response?.data?.message ?? error?.message ?? 'Failed to load video';
+        const msg = error?.response?.data?.message ?? error?.message ?? 'Không thể tải video';
         setLoadError(msg);
+        setIsLoading(false); // ALWAYS dismiss spinner on failure
       } finally {
+        if (fallbackTimer) clearTimeout(fallbackTimer);
         setIsLoading(false);
       }
     };
 
     if (videoId && balanceChecked && currentBalance > 0) {
       loadContent();
+      // Fallback: if loadContent() doesn't finish within 5 min (subtitle gen can take up to 3 min),
+      // only dismiss the spinner if the subtitle modal is NOT open — if modal IS open, subtitle gen
+      // is in progress and the modal handles its own state.
+      fallbackTimer = window.setTimeout(() => {
+        setIsLoading(false);
+        if (!showSubtitleModal) {
+          setLoadError('Kết nối quá chậm. Vui lòng thử lại.');
+        }
+      }, 5 * 60 * 1000);
     }
 
+    // Single cleanup: clear fallback timer AND reset player
     return () => {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       resetPlayer();
       clearSegments();
     };
-  }, [videoId, startTimeParam]);
+  }, [videoId, startTimeParam, balanceChecked, currentBalance]);
 
   // ── Generate subtitles with AI ────────────────────────────────────
   const handleSubtitleReady = useCallback((subtitleUrl: string, segmentCount: number) => {
@@ -603,7 +638,7 @@ export default function LearningPlayerPage() {
         <div className="flex-1 flex flex-col relative">
           {/* Player container — click empty space to start/resume playback */}
           <div className="relative flex-1 bg-black player-container" onClick={() => usePlayerStore.getState().play()}>
-            <VideoPlayer youtubeId={video?.youtubeId} poster={video?.thumbnail} />
+            <VideoPlayer youtubeId={video?.youtubeId} poster={video?.thumbnail} onPlayerReady={handlePlayerReady} onError={(err) => { setLoadError('Video không thể tải: ' + err); setIsLoading(false); }} />
             <SubtitleOverlay onWordClick={handleWordClick} />
             <PlayerControls />
           </div>

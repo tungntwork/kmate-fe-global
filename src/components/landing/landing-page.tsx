@@ -705,7 +705,7 @@ export function LandingPage() {
 
         {/* ===== HERO ===== */}
         <section className="relative min-h-screen flex items-center pt-28 pb-20 overflow-hidden">
-          {/* Background image — full screen, blurred, synced with slider */}
+          {/* Background image: full screen, blurred, synced with slider */}
           <div className="absolute inset-0 overflow-hidden">
             <AnimatePresence mode="wait">
               <motion.div

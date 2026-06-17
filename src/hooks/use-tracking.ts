@@ -220,12 +220,12 @@ export function useTracking(options: UseTrackingOptions = {}) {
     }
   }, [currentTime, duration, videoId, trackWatchComplete]);
 
-  // Update stats
+  // Update stats only when segment changes (not on every currentTime tick)
   useEffect(() => {
-    if (videoId) {
+    if (videoId && currentSegment) {
       setStats(getVideoStats(videoId));
     }
-  }, [videoId, getVideoStats, currentTime]);
+  }, [videoId, currentSegment, getVideoStats]);
 
   return {
     // State

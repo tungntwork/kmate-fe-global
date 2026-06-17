@@ -302,7 +302,7 @@ export function LoginPage() {
                   boxShadow: '0 0 15px rgba(124,77,255,0.3), 0 4px 12px rgba(0,0,0,0.3)',
                 }}
               >
-                Đăng nhập vào tài khoản của bạn
+                Đăng nhập
               </Button>
 
               {/* Divider */}

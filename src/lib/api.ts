@@ -34,7 +34,14 @@ apiClient.interceptors.request.use(
 
 // Response interceptor
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Guard against 204 No Content — Axios resolves even with empty body.
+    // Throw so callers can handle gracefully instead of crashing on .data access.
+    if (response.status === 204 || !response.data) {
+      return Promise.reject(new Error('Empty response (204)'));
+    }
+    return response;
+  },
   async (error: AxiosError) => {
     const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
 

@@ -111,17 +111,22 @@ export default function UserExplorePage() {
       })
       .catch(() => {});
 
-    // Initial search with loading toast
+    // Initial search — delay error toast to 15s so fast responses never show it
     const msgKey = message.loading({ content: 'Đang tải video...', duration: 0, key: 'explore-load' });
+    const errorTimer = window.setTimeout(() => {
+      message.error({ content: 'Không thể tải video', key: 'explore-load' });
+    }, 15000);
     videoService.discoverSearch({ q: 'Kpop 2026', limit: 8 })
       .then((r) => {
+        clearTimeout(errorTimer);
         setSearchResults(r.data.data.videos);
         message.success({ content: 'Đã tải xong!', key: 'explore-load' });
       })
-      .catch(() => { message.error({ content: 'Lỗi tải video', key: 'explore-load' }); })
+      .catch(() => {
+        clearTimeout(errorTimer);
+      })
       .finally(() => {
         setLoadingSearch(false);
-        // Ensure toast is dismissed when component unmounts
         toastTimerRef.current = window.setTimeout(() => message.destroy('explore-load'), 100) as unknown as ReturnType<typeof window.setTimeout>;
       });
     return () => {

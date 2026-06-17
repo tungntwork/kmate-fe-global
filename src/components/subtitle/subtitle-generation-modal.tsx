@@ -58,6 +58,7 @@ export function SubtitleGenerationModal({
     if (failed) return 'failed';
     if (jobStatus?.status === 'FAILED') return 'failed';
     if (completed || ready) return 'completed';
+    if (jobStatus?.status === 'COMPLETED') return 'completed';
     if (requestMutation.data?.status === 'CACHED' || requestMutation.data?.status === 'EXISTS') return 'cached';
     if (resolvedJobId) return 'queued';
     if (progressPercent > 0) return 'processing';
@@ -118,6 +119,24 @@ export function SubtitleGenerationModal({
       queryClient.invalidateQueries({ queryKey: ['subtitle-job', failed.jobId] });
     }
   }, [failed?.jobId, queryClient]);
+
+  // When job completes via polling (WebSocket might have missed it), invalidate the subtitle query
+  // so the ready data is refetched from the server and the success UI is shown
+  useEffect(() => {
+    if (jobStatus?.status === 'COMPLETED' && resolvedJobId) {
+      queryClient.invalidateQueries({ queryKey: ['subtitle', videoId] });
+      queryClient.invalidateQueries({ queryKey: ['subtitles', videoId] });
+    }
+  }, [jobStatus?.status, resolvedJobId, videoId, queryClient]);
+
+  // Trigger subtitle ready callback when COMPLETED via polling (WebSocket might have missed it)
+  useEffect(() => {
+    if (jobStatus?.status === 'COMPLETED' && onSubtitleReady) {
+      // Trigger the callback so parent reloads subtitles into the player
+      // URL and segmentCount will be refetched by the parent via subtitle service
+      onSubtitleReady('', 0);
+    }
+  }, [jobStatus?.status, onSubtitleReady]);
 
   // When modal opens, trigger subtitle generation only if no job is in progress
   // Guard: skip if we already have a resolved job ID (from a previous attempt in this session)
