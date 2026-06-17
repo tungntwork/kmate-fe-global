@@ -15,10 +15,14 @@ import {
   TrophyOutlined,
   ClockCircleOutlined,
   FireOutlined,
+  DeleteOutlined,
+  AppstoreOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { quizService, flashcardService, type QuizDeck, type QuizQuestion, type QuizResult } from '@/lib/api-services';
 import { useQuizStore } from '@/store/quiz.store';
+import { ConfirmModal } from '@/components/common/confirm-modal';
 
 type Screen = 'home' | 'quiz' | 'result';
 
@@ -140,6 +144,8 @@ function DeckCard({
 
 // ─── Quiz Home Screen ────────────────────────────────────────────────────────
 
+type QuizSortOption = 'newest' | 'name_asc' | 'name_desc' | 'cards_desc' | 'cards_asc';
+
 function QuizHomeScreen({
   decks,
   stats,
@@ -147,6 +153,7 @@ function QuizHomeScreen({
   onStartQuiz,
   wrongAnswersData,
   loadingWrongAnswers,
+  onDeleteDeck,
 }: {
   decks: DeckInfo[];
   stats: UserStats | null;
@@ -158,8 +165,29 @@ function QuizHomeScreen({
     quizIds: string[];
   };
   loadingWrongAnswers?: boolean;
+  onDeleteDeck: (id: string, name: string) => void;
 }) {
+  const { message } = App.useApp();
   const [deckLoading, setDeckLoading] = useState<'random' | 'ai' | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sortBy, setSortBy] = useState<QuizSortOption>('newest');
+  const [page, setPage] = useState(1);
+  const pageSize = 6;
+
+  const sorted = [...decks].sort((a, b) => {
+    switch (sortBy) {
+      case 'name_asc': return a.name.localeCompare(b.name);
+      case 'name_desc': return b.name.localeCompare(a.name);
+      case 'cards_desc': return b.cardCount - a.cardCount;
+      case 'cards_asc': return a.cardCount - b.cardCount;
+      default: return 0;
+    }
+  });
+
+  const totalPages = Math.ceil(sorted.length / pageSize);
+  const paginated = sorted.slice((page - 1) * pageSize, page * pageSize);
+  const startIdx = sorted.length > 0 ? (page - 1) * pageSize + 1 : 0;
+  const endIdx = Math.min(page * pageSize, sorted.length);
 
   const handleSpecialStart = async (mode: 'random' | 'ai') => {
     setDeckLoading(mode);
@@ -284,59 +312,168 @@ function QuizHomeScreen({
           <Spin size="large" />
         </div>
       ) : decks.length > 0 ? (
-        <div>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-3">Bộ flashcard của bạn</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {decks.map((deck, i) => (
-              <motion.div
-                key={deck.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="relative rounded-2xl p-5 cursor-pointer select-none"
-                style={{
-                  background: 'rgba(21,28,42,0.8)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                }}
-                whileHover={{ scale: 1.02, borderColor: deck.color + '60' }}
-                onClick={() => onStartQuiz('deck', deck.id)}
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">Bộ flashcard của bạn</h2>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">
+                {startIdx}-{endIdx} / {sorted.length} bộ
+              </span>
+              <select
+                value={sortBy}
+                onChange={(e) => { setSortBy(e.target.value as QuizSortOption); setPage(1); }}
+                className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary cursor-pointer"
               >
-                <div className="flex items-center gap-3 mb-3">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
-                    style={{ background: deck.color + '20', color: deck.color }}
+                <option value="newest">Mới nhất</option>
+                <option value="name_asc">Tên A→Z</option>
+                <option value="name_desc">Tên Z→A</option>
+                <option value="cards_desc">Nhiều thẻ nhất</option>
+                <option value="cards_asc">Ít thẻ nhất</option>
+              </select>
+              <div className="flex items-center rounded-lg border border-white/10 overflow-hidden">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`px-2.5 py-1.5 text-xs transition-colors ${viewMode === 'grid' ? 'bg-primary text-white' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+                >
+                  <AppstoreOutlined style={{ fontSize: 14 }} />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`px-2.5 py-1.5 text-xs transition-colors ${viewMode === 'list' ? 'bg-primary text-white' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+                >
+                  <UnorderedListOutlined style={{ fontSize: 14 }} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className={viewMode === 'grid'
+            ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
+            : 'space-y-3'
+          }>
+            {paginated.map((deck) => (
+              <div key={deck.id} className="relative group">
+                {viewMode === 'grid' ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="relative rounded-2xl p-5 cursor-pointer select-none"
+                    style={{
+                      background: 'rgba(21,28,42,0.8)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                    }}
+                    whileHover={{ scale: 1.02, borderColor: deck.color + '60' }}
+                    onClick={() => onStartQuiz('deck', deck.id)}
                   >
-                    <BookOutlined />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-white font-bold text-sm truncate">{deck.name}</h3>
-                    <p className="text-slate-500 text-xs">
-                      Tổng cộng <span className="font-bold text-white">{deck.cardCount}</span> từ
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  {deck.dueCount > 0 ? (
-                    <span
-                      className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                      style={{ background: '#7C4DFF20', color: '#a78bfa', border: '1px solid #7C4DFF40' }}
+                    <div className="flex items-center gap-3 mb-3">
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
+                        style={{ background: deck.color + '20', color: deck.color }}
+                      >
+                        <BookOutlined />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-white font-bold text-sm truncate">{deck.name}</h3>
+                        <p className="text-slate-500 text-xs">
+                          Tổng cộng <span className="font-bold text-white">{deck.cardCount}</span> từ
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      {deck.dueCount > 0 ? (
+                        <span
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                          style={{ background: '#7C4DFF20', color: '#a78bfa', border: '1px solid #7C4DFF40' }}
+                        >
+                          {deck.dueCount} cần ôn
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-600">Không có từ cần ôn</span>
+                      )}
+                      <Button
+                        size="small"
+                        className="!font-bold !rounded-lg !text-xs"
+                        style={{ background: deck.color + '20', border: `1px solid ${deck.color}40`, color: deck.color }}
+                      >
+                        Quiz
+                      </Button>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="user-glass-card p-4 flex items-center gap-4 cursor-pointer hover:border-primary/40 transition-all"
+                    whileHover={{ scale: 1.01 }}
+                    onClick={() => onStartQuiz('deck', deck.id)}
+                  >
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0"
+                      style={{ background: deck.color + '20', color: deck.color }}
                     >
-                      {deck.dueCount} cần ôn
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-slate-600">Không có từ cần ôn</span>
-                  )}
-                  <Button
-                    size="small"
-                    className="!font-bold !rounded-lg !text-xs"
-                    style={{ background: deck.color + '20', border: `1px solid ${deck.color}40`, color: deck.color }}
-                  >
-                    Quiz
-                  </Button>
-                </div>
-              </motion.div>
+                      <BookOutlined />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-white font-bold text-sm truncate">{deck.name}</h3>
+                      <p className="text-slate-500 text-xs">
+                        {deck.cardCount} từ {deck.dueCount > 0 ? `· ${deck.dueCount} cần ôn` : ''}
+                      </p>
+                    </div>
+                    <Button
+                      size="small"
+                      className="!font-bold !rounded-lg !text-xs"
+                      style={{ background: deck.color + '20', border: `1px solid ${deck.color}40`, color: deck.color }}
+                    >
+                      Quiz
+                    </Button>
+                  </motion.div>
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDeleteDeck(deck.id, deck.name); }}
+                  className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center
+                    bg-red-500/0 text-slate-500 hover:bg-red-500/20 hover:text-red-400
+                    transition-all opacity-0 group-hover:opacity-100"
+                  title="Xóa bộ quiz"
+                >
+                  <DeleteOutlined style={{ fontSize: 14 }} />
+                </button>
+              </div>
             ))}
           </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-4">
+              <Button
+                size="small"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="!rounded-lg"
+              >
+                Trước
+              </Button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === page
+                    ? 'bg-primary text-white'
+                    : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                    }`}
+                >
+                  {p}
+                </button>
+              ))}
+              <Button
+                size="small"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="!rounded-lg"
+              >
+                Sau
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="user-glass-card p-12 text-center">
@@ -1262,6 +1399,36 @@ export default function UserQuizPage() {
                 onStartQuiz={handleStartQuiz}
                 wrongAnswersData={wrongAnswersData ?? undefined}
                 loadingWrongAnswers={loadingWrongAnswers}
+                onDeleteDeck={(id: string, name: string) => {
+                  ConfirmModal.confirm({
+                    title: 'Xác nhận xóa',
+                    message: 'Bạn có muốn xóa bộ quiz "' + name + '"?',
+                    danger: true,
+                    confirmText: 'Xóa',
+                    onConfirm: async () => {
+                      try {
+                        await flashcardService.deleteDeck(id);
+                        message.success('Đã xóa bộ quiz!');
+                        const decksRes = await flashcardService.getDecks();
+                        const data = decksRes.data.data;
+                        if (data) {
+                          setDecks(data.map((d: any, i: number) => ({
+                            id: d.id,
+                            name: d.name,
+                            cardCount: d.cardCount ?? 0,
+                            dueCount: d.dueCount ?? 0,
+                            color: d.color ?? DECK_COLORS[i % DECK_COLORS.length],
+                            icon: d.icon ?? 'book',
+                          })));
+                        }
+                        const statsRes = await quizService.getStats();
+                        if (statsRes.data.data) setStats(statsRes.data.data);
+                      } catch {
+                        message.error('Không thể xóa bộ quiz');
+                      }
+                    },
+                  });
+                }}
               />
             </motion.div>
           </AnimatePresence>

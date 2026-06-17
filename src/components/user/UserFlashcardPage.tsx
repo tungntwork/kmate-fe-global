@@ -12,9 +12,13 @@ import {
   ReloadOutlined,
   LeftOutlined,
   RightOutlined,
+  DeleteOutlined,
+  AppstoreOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { flashcardService, type Flashcard, type FlashcardDeck, type FlashcardStats } from '@/lib/api-services';
+import { ConfirmModal } from '@/components/common/confirm-modal';
 import { useFlashcardStore } from '@/store/flashcard.store';
 import { CreateFromVideoView } from './CreateFromVideoView';
 import { DueCardsView } from './DueCardsView';
@@ -663,7 +667,10 @@ function VideoDeckCard({ deck, onStart }: {
   );
 }
 
-function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, hasInProgressSession, onResume }: {
+type SortOption = 'newest' | 'name_asc' | 'name_desc' | 'cards_asc' | 'cards_desc';
+type ViewMode = 'grid' | 'list';
+
+function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, hasInProgressSession, onResume, onDeleteDeck }: {
   defaultDecks: FlashcardDeck[];
   videoDecks: (FlashcardDeck & { youtubeId?: string; videoTitle?: string })[];
   stats: FlashcardStats | null;
@@ -671,7 +678,31 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, 
   onSelectDeck: (deck: FlashcardDeck) => void;
   hasInProgressSession: boolean;
   onResume: () => void;
+  onDeleteDeck: (id: string, name: string) => void;
 }) {
+  const { message } = App.useApp();
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [sortBy, setSortBy] = useState<SortOption>('newest');
+  const [page, setPage] = useState(1);
+  const pageSize = 6;
+
+  const allDecks = [...defaultDecks, ...videoDecks];
+
+  const sorted = [...allDecks].sort((a, b) => {
+    switch (sortBy) {
+      case 'name_asc': return a.name.localeCompare(b.name);
+      case 'name_desc': return b.name.localeCompare(a.name);
+      case 'cards_asc': return a.cardCount - b.cardCount;
+      case 'cards_desc': return b.cardCount - a.cardCount;
+      default: return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    }
+  });
+
+  const totalPages = Math.ceil(sorted.length / pageSize);
+  const paginated = sorted.slice((page - 1) * pageSize, page * pageSize);
+  const startIdx = (page - 1) * pageSize + 1;
+  const endIdx = Math.min(page * pageSize, sorted.length);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -742,11 +773,25 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, 
             <h2 className="text-xl font-bold text-white">Bộ từ của tôi</h2>
             <div className="h-px flex-1 bg-dark-200" />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {defaultDecks.map((deck, i) => {
+          <div className={viewMode === 'grid'
+            ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
+            : 'space-y-3'
+          }>
+            {defaultDecks.slice((page - 1) * pageSize, page * pageSize).map((deck, i) => {
               const color = deck.color || DECK_COLORS[i % DECK_COLORS.length];
               return (
-                <DeckCard key={deck.id} deck={{ ...deck, color }} onStart={() => onSelectDeck(deck)} />
+                <div key={deck.id} className="relative group">
+                  <DeckCard deck={{ ...deck, color }} onStart={() => onSelectDeck(deck)} />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDeleteDeck(deck.id, deck.name); }}
+                    className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center
+                      bg-red-500/0 text-slate-500 hover:bg-red-500/20 hover:text-red-400
+                      transition-all opacity-0 group-hover:opacity-100"
+                    title="Xóa bộ thẻ"
+                  >
+                    <DeleteOutlined style={{ fontSize: 14 }} />
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -761,16 +806,105 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, 
             <span className="text-xs text-slate-500">{videoDecks.length} bộ</span>
             <div className="h-px flex-1 bg-dark-200" />
           </div>
-          <div className="space-y-3">
-            {videoDecks.map((deck) => (
-              <VideoDeckCard key={deck.id} deck={deck} onStart={() => onSelectDeck(deck as FlashcardDeck)} />
+
+          {/* Toolbar: view toggle + sort + pagination */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">
+                {startIdx}-{endIdx} / {sorted.length} bộ
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={sortBy}
+                onChange={(e) => { setSortBy(e.target.value as SortOption); setPage(1); }}
+                className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary cursor-pointer"
+              >
+                <option value="newest">Mới nhất</option>
+                <option value="name_asc">Tên A→Z</option>
+                <option value="name_desc">Tên Z→A</option>
+                <option value="cards_desc">Nhiều thẻ nhất</option>
+                <option value="cards_asc">Ít thẻ nhất</option>
+              </select>
+              <div className="flex items-center rounded-lg border border-white/10 overflow-hidden">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`px-2.5 py-1.5 text-xs transition-colors ${viewMode === 'grid' ? 'bg-primary text-white' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+                >
+                  <AppstoreOutlined style={{ fontSize: 14 }} />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`px-2.5 py-1.5 text-xs transition-colors ${viewMode === 'list' ? 'bg-primary text-white' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+                >
+                  <UnorderedListOutlined style={{ fontSize: 14 }} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className={viewMode === 'grid'
+            ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
+            : 'space-y-3'
+          }>
+            {paginated.map((deck) => (
+              <div key={deck.id} className="relative group">
+                {viewMode === 'grid' ? (
+                  <VideoDeckCard deck={deck} onStart={() => onSelectDeck(deck as FlashcardDeck)} />
+                ) : (
+                  <ListDeckRow deck={deck} onStart={() => onSelectDeck(deck as FlashcardDeck)} />
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDeleteDeck(deck.id, deck.name); }}
+                  className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center
+                    bg-red-500/0 text-slate-500 hover:bg-red-500/20 hover:text-red-400
+                    transition-all opacity-0 group-hover:opacity-100"
+                  title="Xóa bộ thẻ"
+                >
+                  <DeleteOutlined style={{ fontSize: 14 }} />
+                </button>
+              </div>
             ))}
           </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-4">
+              <Button
+                size="small"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="!rounded-lg"
+              >
+                Trước
+              </Button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === page
+                    ? 'bg-primary text-white'
+                    : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                    }`}
+                >
+                  {p}
+                </button>
+              ))}
+              <Button
+                size="small"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="!rounded-lg"
+              >
+                Sau
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
       {/* Empty state */}
-      {defaultDecks.length === 0 && videoDecks.length === 0 && (
+      {allDecks.length === 0 && (
         <div className="user-glass-card p-8 text-center">
           <p className="text-slate-400 mb-4">Bạn chưa có bộ thẻ nào. Hãy tạo bộ thẻ đầu tiên!</p>
           <Button type="primary" className="!font-bold !rounded-xl"
@@ -779,6 +913,62 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, 
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── List-mode row for video decks ─────────────────────────────────────────────
+function ListDeckRow({ deck, onStart }: { deck: FlashcardDeck & { youtubeId?: string; videoTitle?: string }; onStart: () => void }) {
+  const color = deck.color || '#8B5CFA';
+  return (
+    <div
+      className="user-glass-card p-4 flex items-center gap-4 cursor-pointer hover:border-primary/40 transition-all"
+      onClick={onStart}
+    >
+      {/* Thumbnail */}
+      <div className="w-24 h-16 rounded-lg overflow-hidden bg-dark-400 flex-shrink-0 flex items-center justify-center relative">
+        {deck.youtubeId ? (
+          <img
+            src={`https://img.youtube.com/vi/${deck.youtubeId}/mqdefault.jpg`}
+            alt={deck.videoTitle || deck.name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-600/30 to-cyan-500/30 flex items-center justify-center">
+            <span className="text-2xl" style={{ animationDuration: '2s' }}>🎬</span>
+          </div>
+        )}
+      </div>
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+            style={{ color, backgroundColor: color + '15' }}>
+            {deck.name}
+          </span>
+        </div>
+        {deck.videoTitle && (
+          <p className="text-sm text-white truncate">{deck.videoTitle}</p>
+        )}
+        <span className="text-xs text-slate-400 mt-1 block">{deck.cardCount} thẻ</span>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {deck.youtubeId ? (
+          <Link
+            href={`/learn/${deck.youtubeId}`}
+            onClick={(e) => e.stopPropagation()}
+            className="text-xs font-bold px-3 py-1.5 rounded-xl transition-colors"
+            style={{ backgroundColor: color + '20', color }}>
+            Học lại
+          </Link>
+        ) : (
+          <button className="text-xs font-bold px-3 py-1.5 rounded-xl"
+            style={{ backgroundColor: color + '20', color }}>
+            Bắt đầu ôn
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1241,6 +1431,28 @@ export default function UserFlashcardPage() {
                 onSelectDeck={handleSelectDeck}
                 hasInProgressSession={!!activeSession}
                 onResume={handleResumeSession}
+                onDeleteDeck={(id: string, name: string) => {
+                  ConfirmModal.confirm({
+                    title: 'Xác nhận xóa',
+                    message: `Bạn có muốn xóa bộ flashcard "${name}"?`,
+                    danger: true,
+                    confirmText: 'Xóa',
+                    onConfirm: async () => {
+                      try {
+                        await flashcardService.deleteDeck(id);
+                        message.success('Đã xóa bộ thẻ!');
+                        const [decksRes, statsRes] = await Promise.all([
+                          flashcardService.getDecks(),
+                          flashcardService.getStats(),
+                        ]);
+                        setDecks(decksRes.data.data);
+                        if (statsRes.data.data) setStats(statsRes.data.data);
+                      } catch {
+                        message.error('Không thể xóa bộ thẻ');
+                      }
+                    },
+                  });
+                }}
               />
             )
           )}
