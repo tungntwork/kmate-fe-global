@@ -178,7 +178,7 @@ export function ForgotPasswordPage() {
                     ?
                   </h2>
                   <p className="text-slate-400 text-sm">
-                    No worries, we&apos;ll send you reset instructions.
+                    Không có vấn đề, chúng tôi sẽ gửi cho bạn hướng dẫn đặt lại mật khẩu.
                   </p>
                 </div>
 
@@ -187,12 +187,12 @@ export function ForgotPasswordPage() {
                   {/* Email */}
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                      Email Address
+                      Email
                     </label>
                     <Input
                       size="large"
                       prefix={<MailOutlined className="text-slate-500" />}
-                      placeholder="name@example.com"
+                      placeholder="email@example.com"
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -221,15 +221,15 @@ export function ForgotPasswordPage() {
                       boxShadow: '0 0 15px rgba(124,77,255,0.3), 0 4px 12px rgba(0,0,0,0.3)',
                     }}
                   >
-                    Send Reset Instructions
+                    Gửi hướng dẫn đặt lại mật khẩu
                   </Button>
                 </form>
 
                 {/* Back to login */}
                 <p className="text-center mt-6 text-slate-400 text-sm relative z-10">
-                  Remember your password?{' '}
+                  Nhớ mật khẩu của bạn?{' '}
                   <Link href="/login" className="text-[#00e5ff] font-bold hover:underline ml-1">
-                    Back to Login
+                    Quay lại đăng nhập
                   </Link>
                 </p>
               </>
@@ -258,20 +258,20 @@ export function ForgotPasswordPage() {
                         WebkitTextFillColor: 'transparent',
                       }}
                     >
-                      Sent!
+                      Đã gửi!
                     </span>
                   </h2>
                   <p className="text-slate-400 text-sm mb-2">
-                    We&apos;ve sent password reset instructions to
+                    Chúng tôi đã gửi hướng dẫn đặt lại mật khẩu cho
                   </p>
                   <p className="text-[#00e5ff] font-bold text-base mb-8">{email}</p>
                   <p className="text-slate-500 text-xs mb-8">
-                    Didn&apos;t receive the email? Check your spam folder or{' '}
+                    Không nhận được email? Kiểm tra thư rác hoặc{' '}
                     <button
                       onClick={() => setSubmitted(false)}
                       className="text-[#00e5ff] hover:underline cursor-pointer bg-transparent border-0"
                     >
-                      try again
+                      thử lại
                     </button>
                     .
                   </p>
@@ -286,7 +286,7 @@ export function ForgotPasswordPage() {
                         boxShadow: '0 0 15px rgba(124,77,255,0.3)',
                       }}
                     >
-                      Back to Login
+                      Quay lại đăng nhập
                     </Button>
                   </Link>
                 </div>

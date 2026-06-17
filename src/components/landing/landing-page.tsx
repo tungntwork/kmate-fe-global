@@ -47,6 +47,9 @@ import {
 import ReactSimplyCarousel from 'react-simply-carousel';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/store/auth.store';
+import { Dropdown } from 'antd';
 const heroSlides = [
   {
     src: imgBts,
@@ -584,6 +587,8 @@ function TestimonialCarousel() {
 export function LandingPage() {
   const [currentHeroSlide, setCurrentHeroSlide] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isAuthenticated, user, _hasHydrated, logout } = useAuthStore();
+  const router = useRouter();
 
   const navItems = [
     { label: 'Trang Chủ', href: '#' },
@@ -627,27 +632,110 @@ export function LandingPage() {
 
               {/* Desktop Auth */}
               <div className="hidden md:flex items-center gap-2">
-                <Link href="/login">
-                  <Button type="text" className="!text-white/70 !font-semibold !text-sm !px-3 hover:!text-white">
-                    Đăng Nhập
-                  </Button>
-                </Link>
-                <Link href="/register">
-                  <Button type="primary" className="!font-bold !text-sm !h-9 !px-5 !rounded-xl">
-                    Bắt Đầu Miễn Phí
-                  </Button>
-                </Link>
+                {!_hasHydrated ? null : isAuthenticated && user ? (
+                  <Dropdown
+                    menu={{
+                      items: [
+                        {
+                          key: 'dashboard',
+                          label: (
+                            <Link href="/user/dashboard" className="!text-white !no-underline hover:!text-[#00e5ff]">
+                              Dashboard
+                            </Link>
+                          ),
+                        },
+                        { type: 'divider' as const },
+                        {
+                          key: 'logout',
+                          label: <span className="!text-red-400">Đăng Xuất</span>,
+                          onClick: () => {
+                            localStorage.removeItem('accessToken');
+                            localStorage.removeItem('refreshToken');
+                            logout();
+                          },
+                        },
+                      ],
+                    }}
+                    placement="bottomRight"
+                    trigger={['click']}
+                  >
+                    <button className="flex items-center gap-2.5 hover:opacity-80 transition-opacity cursor-pointer bg-transparent border-none p-0">
+                      <Avatar
+                        src={user.avatar}
+                        size={36}
+                        className="!bg-gradient-to-br !from-[#7C4DFF] !to-[#00e5ff]"
+                      >
+                        {!user.avatar && user.name ? user.name[0] : null}
+                      </Avatar>
+                      <span className="text-white font-medium text-sm">{user.name}</span>
+                    </button>
+                  </Dropdown>
+                ) : (
+                  <>
+                    <Link href="/login">
+                      <Button type="text" className="!text-white/70 !font-semibold !text-sm !px-3 hover:!text-white">
+                        Đăng Nhập
+                      </Button>
+                    </Link>
+                    <Link href="/register">
+                      <Button type="primary" className="!font-bold !text-sm !h-9 !px-5 !rounded-xl">
+                        Bắt Đầu Miễn Phí
+                      </Button>
+                    </Link>
+                  </>
+                )}
               </div>
 
-              {/* Mobile Hamburger */}
-              <button
-                className="md:hidden w-9 h-9 flex items-center justify-center rounded-xl"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(124,77,255,0.2)', color: '#7C4DFF' }}
-                onClick={() => setMobileMenuOpen(true)}
-                aria-label="Mở menu"
-              >
-                <MenuOutlined />
-              </button>
+              {/* Mobile Auth / Hamburger */}
+              <div className="md:hidden flex items-center gap-2">
+                {!_hasHydrated ? null : isAuthenticated && user ? (
+                  <Dropdown
+                    menu={{
+                      items: [
+                        {
+                          key: 'dashboard',
+                          label: (
+                            <Link href="/user/dashboard" className="!text-white !no-underline hover:!text-[#00e5ff]">
+                              Dashboard
+                            </Link>
+                          ),
+                        },
+                        { type: 'divider' as const },
+                        {
+                          key: 'logout',
+                          label: <span className="!text-red-400">Đăng Xuất</span>,
+                          onClick: () => {
+                            localStorage.removeItem('accessToken');
+                            localStorage.removeItem('refreshToken');
+                            logout();
+                          },
+                        },
+                      ],
+                    }}
+                    placement="bottomRight"
+                    trigger={['click']}
+                  >
+                    <button className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer bg-transparent border-none p-0">
+                      <Avatar
+                        src={user.avatar}
+                        size={32}
+                        className="!bg-gradient-to-br !from-[#7C4DFF] !to-[#00e5ff]"
+                      >
+                        {!user.avatar && user.name ? user.name[0] : null}
+                      </Avatar>
+                    </button>
+                  </Dropdown>
+                ) : (
+                  <button
+                    className="w-9 h-9 flex items-center justify-center rounded-xl"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(124,77,255,0.2)', color: '#7C4DFF' }}
+                    onClick={() => setMobileMenuOpen(true)}
+                    aria-label="Mở menu"
+                  >
+                    <MenuOutlined />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </header>
@@ -681,26 +769,51 @@ export function LandingPage() {
                 {item.label}
               </a>
             ))}
+            {!_hasHydrated ? null : isAuthenticated && user ? (
+              <>
+                <div className="border-t border-white/10 my-3" />
+                <a
+                  href="/user/dashboard"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="mobile-nav-link"
+                >
+                  Dashboard
+                </a>
+                <a
+                  onClick={() => {
+                    localStorage.removeItem('accessToken');
+                    localStorage.removeItem('refreshToken');
+                    logout();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="mobile-nav-link !text-red-400"
+                >
+                  Đăng Xuất
+                </a>
+              </>
+            ) : null}
           </nav>
-          <div className="mt-8 flex flex-col gap-3">
-            <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
-              <Button block size="large" className="!font-semibold !h-11 !rounded-xl !border-white/10 !text-white/70 !bg-white/5 hover:!bg-white/10">
-                Đăng Nhập
-              </Button>
-            </Link>
-            <Link href="/register" onClick={() => setMobileMenuOpen(false)}>
-              <Button
-                type="primary"
-                block
-                size="large"
-                icon={<ThunderboltOutlined />}
-                className="!font-bold !h-11 !rounded-xl"
-                style={{ background: 'linear-gradient(135deg, #ef4444, #7C4DFF)' }}
-              >
-                Bắt Đầu Miễn Phí
-              </Button>
-            </Link>
-          </div>
+          {!_hasHydrated ? null : !isAuthenticated ? (
+            <div className="mt-8 flex flex-col gap-3">
+              <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+                <Button block size="large" className="!font-semibold !h-11 !rounded-xl !border-white/10 !text-white/70 !bg-white/5 hover:!bg-white/10">
+                  Đăng Nhập
+                </Button>
+              </Link>
+              <Link href="/register" onClick={() => setMobileMenuOpen(false)}>
+                <Button
+                  type="primary"
+                  block
+                  size="large"
+                  icon={<ThunderboltOutlined />}
+                  className="!font-bold !h-11 !rounded-xl"
+                  style={{ background: 'linear-gradient(135deg, #ef4444, #7C4DFF)' }}
+                >
+                  Bắt Đầu Miễn Phí
+                </Button>
+              </Link>
+            </div>
+          ) : null}
         </Drawer>
 
         {/* ===== HERO ===== */}

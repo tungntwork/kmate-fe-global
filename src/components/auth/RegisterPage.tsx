@@ -11,7 +11,7 @@ import { motion } from 'framer-motion';
 import imgKMATELOGO from '../../../assets/img/branding/KMATELOGO.png';
 import { authService } from '@/lib/api-services';
 import { useAuthStore } from '@/store/auth.store';
-import { useGoogleAuth } from '@/hooks/use-google-auth';
+import { PublicHeader } from '@/components/layout/PublicHeader';
 
 export function RegisterPage() {
   const { message } = App.useApp();
@@ -23,7 +23,6 @@ export function RegisterPage() {
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { promptGoogle } = useGoogleAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,23 +67,18 @@ export function RegisterPage() {
     }
   };
 
-  const handleGoogleRegister = () => {
-    promptGoogle(async (idToken: string) => {
-      try {
-        const response = await authService.googleLogin(idToken);
-        const { accessToken, refreshToken, user } = response.data.data;
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', refreshToken);
-        const { setTokens, setUser } = useAuthStore.getState();
-        setTokens(accessToken, refreshToken);
-        setUser(user);
-        message.success('Đăng nhập thành công! Đang chuyển hướng...');
-        setTimeout(() => { router.push('/user/dashboard'); }, 500);
-      } catch (err: unknown) {
-        const error = err as { response?: { data?: { error?: { message?: string } } } };
-        message.error(error.response?.data?.error?.message || 'Đăng nhập Google thất bại. Vui lòng thử lại.');
+  const handleGoogleRegister = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/auth/google/login`);
+      const data = await response.json();
+      if (data?.data?.authUrl) {
+        window.location.href = data.data.authUrl;
+      } else {
+        message.error('Không thể khởi tạo đăng ký Google. Vui lòng thử lại.');
       }
-    });
+    } catch {
+      message.error('Không thể kết nối máy chủ. Vui lòng thử lại.');
+    }
   };
 
   return (
@@ -104,38 +98,7 @@ export function RegisterPage() {
         />
       </div>
 
-      {/* ===== HEADER ===== */}
-      <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="glass rounded-xl px-6 py-3 flex items-center justify-between border-white/5">
-            <Link href="/" className="flex items-center gap-2.5">
-              <Image
-                src={imgKMATELOGO}
-                alt="K-MATE Logo"
-                width={120}
-                height={30}
-                className="h-[30px] w-auto object-contain"
-                style={{ width: 'auto' }}
-              />
-            </Link>
-            <div className="flex items-center gap-4">
-              <Link href="/login">
-                <Button type="text" className="!text-white/70 !font-semibold !text-sm !px-3 hover:!text-white">
-                  Login
-                </Button>
-              </Link>
-              <Link href="/register">
-                <Button
-                  className="!font-bold !text-sm !h-9 !px-5 !rounded-xl !border-0 !text-background-dark"
-                  style={{ background: 'linear-gradient(135deg, #7C4DFF, #00e5ff)' }}
-                >
-                  Sign Up
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PublicHeader />
 
       {/* ===== MAIN CONTENT ===== */}
       <main className="relative z-10 flex min-h-screen items-center justify-center px-4 pt-24 pb-12">
@@ -216,7 +179,7 @@ export function RegisterPage() {
                   K-MATE
                 </span>
               </h2>
-              <p className="text-slate-400 text-sm">Start your Korean learning journey today.</p>
+              <p className="text-slate-400 text-sm">Bắt đầu hành trình học tiếng Hàn ngay hôm nay.</p>
             </div>
 
             {/* Form */}
@@ -224,12 +187,12 @@ export function RegisterPage() {
               {/* Full Name */}
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                  Full Name
+                  Tên đầy đủ
                 </label>
                 <Input
                   size="large"
                   prefix={<UserOutlined className="text-slate-500" />}
-                  placeholder="Nguyen Van A"
+                  placeholder="Nguyễn Văn A"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   className="!bg-slate-900/50 !border !border-slate-700/50 !rounded-xl !py-3 !pl-11 !pr-4 !text-white placeholder:!text-slate-600 hover:!border-[#00e5ff]/50 focus-within:!border-[#00e5ff] !transition-all"
@@ -240,12 +203,12 @@ export function RegisterPage() {
               {/* Email */}
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                  Email Address
+                  Email
                 </label>
                 <Input
                   size="large"
                   prefix={<MailOutlined className="text-slate-500" />}
-                  placeholder="name@example.com"
+                  placeholder="email@example.com"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -257,12 +220,12 @@ export function RegisterPage() {
               {/* Password */}
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                  Password
+                  Mật khẩu
                 </label>
                 <Input.Password
                   size="large"
                   prefix={<LockOutlined className="text-slate-500" />}
-                  placeholder="Min. 8 characters"
+                  placeholder="Ít nhất 8 ký tự"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   iconRender={(visible) =>
@@ -276,12 +239,12 @@ export function RegisterPage() {
               {/* Confirm Password */}
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                  Confirm Password
+                  Xác nhận mật khẩu
                 </label>
                 <Input.Password
                   size="large"
                   prefix={<LockOutlined className="text-slate-500" />}
-                  placeholder="Re-enter your password"
+                  placeholder="Nhập lại mật khẩu"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   iconRender={(visible) =>
@@ -301,11 +264,11 @@ export function RegisterPage() {
                 <span className="text-slate-400 text-sm">
                   I agree to the{' '}
                   <Link href="/terms" className="text-[#00e5ff] hover:underline">
-                    Terms of Service
+                    Điều khoản dịch vụ
                   </Link>{' '}
                   and{' '}
                   <Link href="/privacy" className="text-[#00e5ff] hover:underline">
-                    Privacy Policy
+                    Chính sách bảo mật
                   </Link>
                 </span>
               </Checkbox>
@@ -330,14 +293,14 @@ export function RegisterPage() {
                   boxShadow: '0 0 15px rgba(124,77,255,0.3), 0 4px 12px rgba(0,0,0,0.3)',
                 }}
               >
-                Create Free Account
+                Tạo tài khoản miễn phí
               </Button>
 
               {/* Divider */}
               <div className="relative flex items-center justify-center my-6">
                 <div className="w-full border-t border-slate-800" />
                 <span className="absolute px-3 bg-background-dark text-slate-500 text-xs font-bold uppercase">
-                  or sign up with
+                  hoặc đăng ký với
                 </span>
               </div>
 
@@ -356,15 +319,15 @@ export function RegisterPage() {
                   </svg>
                 }
               >
-                Continue with Google
+                Tiếp tục với Google
               </Button>
             </form>
 
             {/* Footer link */}
             <p className="text-center mt-8 text-slate-400 text-sm relative z-10">
-              Already have an account?{' '}
+              Đã có tài khoản?{' '}
               <Link href="/login" className="text-[#00e5ff] font-bold hover:underline ml-1">
-                Sign In
+                Đăng nhập
               </Link>
             </p>
           </div>

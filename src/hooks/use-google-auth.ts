@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
 declare global {
   interface Window {
@@ -18,7 +18,11 @@ declare global {
   }
 }
 
+let initialized = false;
+
 export function useGoogleAuth() {
+  const clientIdRef = useRef<string | null>(null);
+
   const promptGoogle = useCallback((onCredential: (idToken: string) => void) => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
@@ -30,14 +34,18 @@ export function useGoogleAuth() {
       return;
     }
 
-    window.google.accounts.id.initialize({
-      client_id: clientId,
-      callback: (response) => {
-        if (response.credential) {
-          onCredential(response.credential);
-        }
-      },
-    });
+    if (!initialized || clientIdRef.current !== clientId) {
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (response) => {
+          if (response.credential) {
+            onCredential(response.credential);
+          }
+        },
+      });
+      initialized = true;
+      clientIdRef.current = clientId;
+    }
 
     window.google.accounts.id.prompt();
   }, []);

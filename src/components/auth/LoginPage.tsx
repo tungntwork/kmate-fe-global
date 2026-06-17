@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import imgKMATELOGO from '../../../assets/img/branding/KMATELOGO.png';
 import { authService } from '@/lib/api-services';
 import { useAuthStore } from '@/store/auth.store';
-import { useGoogleAuth } from '@/hooks/use-google-auth';
+import { PublicHeader } from '@/components/layout/PublicHeader';
 
 export function LoginPage() {
   const { message } = App.useApp();
@@ -21,7 +21,6 @@ export function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { promptGoogle } = useGoogleAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,26 +53,18 @@ export function LoginPage() {
     }
   };
 
-  const handleGoogleLogin = () => {
-    promptGoogle(async (idToken: string) => {
-      try {
-        const response = await authService.googleLogin(idToken);
-        const { accessToken, refreshToken, user } = response.data.data;
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', refreshToken);
-        const { setTokens, setUser } = useAuthStore.getState();
-        setTokens(accessToken, refreshToken);
-        setUser(user);
-        message.success('Đăng nhập thành công! Đang chuyển hướng...');
-        const dashboardPath = (user.role === 'ADMIN' || user.role === 'MODERATOR')
-          ? '/admin/dashboard'
-          : '/user/dashboard';
-        setTimeout(() => { router.push(dashboardPath); }, 500);
-      } catch (err: unknown) {
-        const error = err as { response?: { data?: { error?: { message?: string } } } };
-        message.error(error.response?.data?.error?.message || 'Đăng nhập Google thất bại. Vui lòng thử lại.');
+  const handleGoogleLogin = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/auth/google/login`);
+      const data = await response.json();
+      if (data?.data?.authUrl) {
+        window.location.href = data.data.authUrl;
+      } else {
+        message.error('Không thể khởi tạo đăng nhập Google. Vui lòng thử lại.');
       }
-    });
+    } catch {
+      message.error('Không thể kết nối máy chủ. Vui lòng thử lại.');
+    }
   };
 
   return (
@@ -94,38 +85,7 @@ export function LoginPage() {
         />
       </div>
 
-      {/* ===== HEADER ===== */}
-      <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="glass rounded-xl px-6 py-3 flex items-center justify-between border-white/5">
-            <Link href="/" className="flex items-center gap-2.5">
-              <Image
-                src={imgKMATELOGO}
-                alt="K-MATE Logo"
-                width={120}
-                height={30}
-                className="h-[30px] w-auto object-contain"
-                style={{ width: 'auto' }}
-              />
-            </Link>
-            <div className="flex items-center gap-4">
-              <Link href="/login">
-                <Button type="text" className="!text-white/70 !font-semibold !text-sm !px-3 hover:!text-white">
-                  Đăng nhập
-                </Button>
-              </Link>
-              <Link href="/register">
-                <Button
-                  className="!font-bold !text-sm !h-9 !px-5 !rounded-xl !border-0 !text-background-dark"
-                  style={{ background: 'linear-gradient(135deg, #7C4DFF, #00e5ff)' }}
-                >
-                  Đăng ký
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PublicHeader />
 
       {/* ===== MAIN CONTENT ===== */}
       <main className="relative z-10 flex min-h-screen items-center justify-center px-4 pt-24 pb-12">
@@ -334,7 +294,7 @@ export function LoginPage() {
 
             {/* Footer link */}
             <p className="text-center mt-8 text-slate-400 text-sm relative z-10">
-              Don&apos;t have an account?{' '}
+              Chưa có tài khoản?{' '}
               <Link href="/register" className="text-[#00e5ff] font-bold hover:underline ml-1">
                 Tạo tài khoản miễn phí
               </Link>

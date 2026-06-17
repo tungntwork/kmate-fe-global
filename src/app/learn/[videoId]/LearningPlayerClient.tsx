@@ -93,8 +93,7 @@ export default function LearningPlayerPage() {
   const [selectedVocabIds, setSelectedVocabIds] = useState<string[]>([]);
 
   // Coin balance gate
-  const [balanceCheckDone, setBalanceCheckDone] = useState(false);
-  const [balanceChecked, setBalanceChecked] = useState(false);
+  const [balanceCheckSkipped, setBalanceCheckSkipped] = useState(false); // true = user chose to continue, skip future checks
   const [currentBalance, setCurrentBalance] = useState(0);
   const [balanceLoading, setBalanceLoading] = useState(false);
 
@@ -170,30 +169,27 @@ export default function LearningPlayerPage() {
 
   // ── Pre-flight coin balance check ──────────────────────────────────
   useEffect(() => {
-    if (balanceChecked || !videoId) return;
+    if (!videoId) return;
 
     let cancelled = false;
 
     const checkBalance = async () => {
+      setBalanceLoading(true);
       try {
         const res = await coinService.getBalance();
-        // Guard against 204 / empty body — Axios resolves even with empty body
+        if (cancelled) return;
         const balance = res?.data?.data?.balance;
-        if (!cancelled) setCurrentBalance(typeof balance === 'number' ? balance : 0);
+        setCurrentBalance(typeof balance === 'number' ? balance : 0);
       } catch {
-        // Network/server errors → treat as 0 balance so InsufficientBalanceModal handles it
         if (!cancelled) setCurrentBalance(0);
       } finally {
-        if (!cancelled) {
-          setBalanceLoading(false);
-          setBalanceChecked(true);
-        }
+        if (!cancelled) setBalanceLoading(false);
       }
     };
 
     checkBalance();
     return () => { cancelled = true; };
-  }, [videoId, balanceChecked]);
+  }, [videoId]);
 
   // ── Player ready guard — set isLoading=false only once when YouTube fires onReady ────
   const playerReadyFiredRef = useRef(false);
@@ -204,13 +200,20 @@ export default function LearningPlayerPage() {
   }, []);
 
   // ── Load video + subtitles ─────────────────────────────────────────
+  // Guard ref: prevents the effect from running twice when balanceLoading flips true→false
+  const contentLoadedRef = useRef(false);
+
   useEffect(() => {
-    // Skip if balance hasn't been checked yet, or if user has 0 coin (modal is shown)
-    if (!balanceChecked || (balanceChecked && currentBalance === 0)) return;
+    // Skip if user has 0 coin (modal is shown)
+    if (!balanceLoading && currentBalance === 0) return;
+
+    // Skip if already loaded in this session (covers balanceLoading:true→false transition)
+    if (contentLoadedRef.current) return;
 
     let fallbackTimer: number | null = null;
 
     const loadContent = async () => {
+      contentLoadedRef.current = true; // prevent double-run
       setIsLoading(true);
       setLoadError(null);
       try {
@@ -278,7 +281,7 @@ export default function LearningPlayerPage() {
       }
     };
 
-    if (videoId && balanceChecked && currentBalance > 0) {
+    if (videoId && !balanceLoading && !balanceCheckSkipped) {
       loadContent();
       // Fallback: if loadContent() doesn't finish within 5 min (subtitle gen can take up to 3 min),
       // only dismiss the spinner if the subtitle modal is NOT open — if modal IS open, subtitle gen
@@ -297,7 +300,7 @@ export default function LearningPlayerPage() {
       resetPlayer();
       clearSegments();
     };
-  }, [videoId, startTimeParam, balanceChecked, currentBalance]);
+  }, [videoId, startTimeParam, balanceLoading, balanceCheckSkipped]);
 
   // ── Generate subtitles with AI ────────────────────────────────────
   const handleSubtitleReady = useCallback((subtitleUrl: string, segmentCount: number) => {
@@ -885,15 +888,15 @@ export default function LearningPlayerPage() {
         </div>
       )}
 
-      {balanceChecked && currentBalance === 0 && !balanceLoading && (
+      {balanceCheckSkipped && currentBalance === 0 && !balanceLoading && (
         <InsufficientBalanceModal open />
       )}
 
-      {balanceChecked && currentBalance > 0 && currentBalance < 10 && !balanceLoading && !isLoading && (
+      {balanceCheckSkipped && currentBalance > 0 && currentBalance < 10 && !balanceLoading && !isLoading && (
         <LowBalanceModal
           open
           balance={currentBalance}
-          onContinue={() => setBalanceChecked(false)}
+          onContinue={() => setBalanceCheckSkipped(false)}
           onBack={() => router.back()}
         />
       )}
