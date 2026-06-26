@@ -56,7 +56,7 @@ export function VideoPlayer({
   onErrorRef.current = onError;
   onPlayerReadyRef.current = onPlayerReady;
 
-  const { setIsFullscreen, setPlayerRef } = usePlayerStore();
+  const { setIsFullscreen, setPlayerRef, playBlocked } = usePlayerStore();
 
   // ── Load YouTube IFrame API script ───────────────────────────────────────
   useEffect(() => {
@@ -225,6 +225,7 @@ export function VideoPlayer({
         <button
           onClick={(e) => {
             e.stopPropagation(); // don't bubble to PlayerControls motion.div
+            if (playBlocked) return;
             const player = playerRef.current;
             if (player && typeof player.playVideo === 'function') {
               player.playVideo();

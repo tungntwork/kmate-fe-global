@@ -8,7 +8,6 @@ import {
   ThunderboltOutlined,
   TranslationOutlined,
   PlayCircleOutlined,
-  ShareAltOutlined,
   BarChartOutlined,
   StarOutlined,
   AimOutlined,
@@ -36,6 +35,19 @@ interface StatCard {
 const CHART_WIDTH = 560;
 const CHART_HEIGHT = 180;
 const PADDING = { top: 20, right: 20, bottom: 30, left: 10 };
+
+const MATE_TIPS = [
+  { text: 'Học từ vựng chủ đề "Gyeolhon" hôm nay? Bạn đã học {words} từ liên quan rồi đấy!', vars: (stats: any) => ({ words: stats?.totalWordsLookedUp ?? 0 }) },
+  { text: 'Mỗi ngày học 10 phút tiếng Hàn — chỉ cần 10 phút thôi nhưng hiệu quả bất ngờ!', vars: () => ({}) },
+  { text: 'Bạn đã học {minutes} phút rồi. Tiếp tục giữ nhịp đều nhé!', vars: (stats: any) => ({ minutes: stats?.totalMinutesLearned ?? 0 }) },
+  { text: 'Xem video có phụ đề tiếng Hàn giúp bạn cải thiện kỹ năng nghe nhanh hơn.', vars: () => ({}) },
+  { text: 'Học từ mới mỗi ngày: chỉ cần 5 từ, sau 1 tháng bạn sẽ biết thêm 150 từ!', vars: () => ({}) },
+  { text: 'Đừng quên ôn lại flashcard đã học — nhắc nhở bộ não巩固 kiến thức.', vars: () => ({}) },
+  { text: 'Bạn đang có chuỗi {streak} ngày liên tiếp! Đừng để断!', vars: (stats: any) => ({ streak: stats?.currentStreak ?? 0 }) },
+  { text: 'Quiz giúp bạn kiểm tra và củng cố từ vựng hiệu quả. Hãy thử quiz hôm nay!', vars: () => ({}) },
+  { text: 'Nghe nhạc K-pop với phụ đề tiếng Hàn là cách học vừa vui vừa hiệu quả!', vars: () => ({}) },
+  { text: 'Học phát âm chuẩn ngay từ đầu sẽ giúp bạn giao tiếp tự tin hơn rất nhiều.', vars: () => ({}) },
+];
 
 function buildAreaPath(data: number[], maxVal: number): string {
   const w = CHART_WIDTH - PADDING.left - PADDING.right;
@@ -200,6 +212,14 @@ export default function UserProgressPage() {
   const [achievementsExpanded, setAchievementsExpanded] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Pick a random tip on mount and refresh
+  const [tipIndex] = useState(() => Math.floor(Math.random() * MATE_TIPS.length));
+  const currentTip = MATE_TIPS[tipIndex % MATE_TIPS.length];
+  const tipText = currentTip.text.replace(
+    /\{(\w+)\}/g,
+    (_, key) => String(currentTip.vars(stats)),
+  );
+
   const loadData = () => {
     setLoading(true);
     Promise.all([
@@ -292,12 +312,6 @@ export default function UserProgressPage() {
         </div>
         <div className="flex gap-3">
           <Button
-            icon={<ShareAltOutlined />}
-            className="!bg-white/5 !text-white !border !border-white/10 !font-bold !rounded-xl hover:!bg-white/10 transition-all !text-sm !flex !items-center !gap-2"
-          >
-            Chia sẻ
-          </Button>
-          <Button
             type="primary"
             icon={<BarChartOutlined />}
             onClick={() => setReportOpen(true)}
@@ -385,7 +399,7 @@ export default function UserProgressPage() {
             </div>
             <h4 className="text-sm font-bold text-white mb-1">MATE Tip</h4>
             <p className="text-xs text-slate-300 leading-relaxed pr-8">
-              Học từ vựng chủ đề &quot;Gyeolhon&quot; hôm nay? Bạn đã học {stats?.totalWordsLookedUp ?? 0} từ liên quan rồi đấy!
+              {tipText}
             </p>
           </motion.div>
         </div>

@@ -5,6 +5,7 @@ import { useWatchHistoryStore, WatchProgress } from '@/store/watch-history.store
 import { usePlayerStore } from '@/store/player.store';
 import { useSubtitleStore } from '@/store/subtitle.store';
 import { api } from '@/lib/api';
+import { videoService } from '@/lib/api-services';
 
 interface WatchEvent {
   type: 'play' | 'pause' | 'seek' | 'segment_complete' | 'watch_complete' | 'progress_update';
@@ -17,6 +18,8 @@ interface UseTrackingOptions {
   videoId?: string;
   saveInterval?: number;
   autoStart?: boolean;
+  /** When true, auto-start is blocked (e.g. during subtitle generation) */
+  blocked?: boolean;
 }
 
 export function useTracking(options: UseTrackingOptions = {}) {
@@ -24,6 +27,7 @@ export function useTracking(options: UseTrackingOptions = {}) {
     videoId,
     saveInterval = 5000, // Save every 5 seconds
     autoStart = true,
+    blocked = false,
   } = options;
 
   const {
@@ -100,20 +104,20 @@ export function useTracking(options: UseTrackingOptions = {}) {
     lastSaveRef.current = now;
 
     try {
-      // Optimistic update to local storage is already done via Zustand
-      // Now sync to server
       const progressData = getProgress(videoId);
       if (progressData) {
-        // await api.post(`/videos/${videoId}/progress`, {
-        //   currentTime,
-        //   duration,
-        //   progress: (currentTime / duration) * 100,
-        //   completedSegments: progressData.completedSegments,
-        // });
+        const progress = (currentTime / duration) * 100;
+        const isComplete = progress >= 90;
+        await videoService.updateProgress(videoId, {
+          currentTime,
+          duration,
+          status: isComplete ? 'COMPLETED' : 'IN_PROGRESS',
+        });
         console.debug('[Tracking] Progress saved:', {
           videoId,
           currentTime: currentTime.toFixed(1),
-          progress: ((currentTime / duration) * 100).toFixed(1),
+          progress: progress.toFixed(1),
+          status: isComplete ? 'COMPLETED' : 'IN_PROGRESS',
         });
       }
     } catch (error) {
@@ -175,10 +179,13 @@ export function useTracking(options: UseTrackingOptions = {}) {
 
   // Auto-start session when playing
   useEffect(() => {
-    if (autoStart && isPlaying && !sessionStartedRef.current && videoId) {
-      startWatching();
+    if (autoStart && isPlaying && !sessionStartedRef.current && videoId && !blocked) {
+      // Inline instead of calling startWatching() to keep dependency array stable
+      sessionStartedRef.current = true;
+      startSession(videoId);
+      trackEvent('play', { startTime: currentTime });
     }
-  }, [isPlaying, autoStart, videoId, startWatching]);
+  }, [isPlaying, autoStart, videoId, blocked, startSession, trackEvent, currentTime]);
 
   // Auto-end session on unmount or close
   useEffect(() => {

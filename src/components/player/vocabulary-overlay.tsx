@@ -234,6 +234,9 @@ export function ClickableSubtitleText({ text, onWordClick, style }: ClickableTex
     <>
       {words.map((word, index) => {
         const isKorean = /[\uAC00-\uD7AF]/.test(word);
+        // Only Korean words are clickable for flashcard saving.
+        // English/mixed words (e.g. English rap lyrics) are not meaningful
+        // in a Korean-learning context and should not be interactive.
         if (!isKorean || word.trim() === '') {
           return <span key={index}>{word}</span>;
         }

@@ -23,6 +23,7 @@ interface AuthState {
   setTokens: (accessToken: string, refreshToken: string) => void;
   logout: () => void;
   updateCoinBalance: (balance: number) => void;
+  updateStreak: (streak: number) => void;
   setHasHydrated: (state: boolean) => void;
 }
 
@@ -49,10 +50,15 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
         }),
 
-      updateCoinBalance: (balance) =>
-        set((state) => ({
-          user: state.user ? { ...state.user, coinBalance: balance } : null,
-        })),
+  updateCoinBalance: (balance) =>
+    set((state) => ({
+      user: state.user ? { ...state.user, coinBalance: balance } : null,
+    })),
+
+  updateStreak: (streak: number) =>
+    set((state) => ({
+      user: state.user ? { ...state.user, streak } : null,
+    })),
 
       setHasHydrated: (state) => set({ _hasHydrated: state }),
     }),

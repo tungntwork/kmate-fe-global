@@ -118,7 +118,7 @@ export function WaitingProgressCard({
     >
       <Card
         className="bg-dark-300 border-dark-200 rounded-2xl overflow-hidden"
-        bodyStyle={{ padding: '1.5rem' }}
+        styles={{ body: { padding: '1.5rem' } }}
       >
         {/* Video info header */}
         <div className="flex items-center gap-4 mb-6">

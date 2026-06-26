@@ -25,14 +25,18 @@ interface SubtitleSegment {
   id: string;
   startTime: number;
   endTime: number;
+  /** May be 'text' (raw subtitles) or 'korean' (processed subtitles) */
   text: string;
 }
 
 interface BilingualSegment {
   id: string;
+  /** Stored as 'start' in Prisma bilingualContent */
   startTime: number;
   endTime: number;
+  /** Normalized: Korean text (from 'text' or 'korean') */
   korean: string;
+  /** Normalized: Vietnamese translation (from 'translation' or 'vietnamese') */
   vietnamese: string;
 }
 
@@ -193,12 +197,35 @@ function SubtitlePickerStep({
 
         const koSub = subs.find(s => s.language === 'ko');
         if (koSub?.subtitleContent) {
-          setKoSegments(koSub.subtitleContent as SubtitleSegment[]);
+          // subtitleContent may store { korean, vietnamese } or { text } — normalize both
+          setKoSegments((koSub.subtitleContent as Array<any>).map((s) => ({
+            id: String(s.id ?? s.start ?? s.startTime ?? ''),
+            startTime: s.start ?? s.startTime ?? 0,
+            endTime: s.end ?? s.endTime ?? 0,
+            text: s.text ?? s.korean ?? '',
+          })));
         }
+
+        // Normalize bilingualContent from both old { korean, vietnamese } and new { text, translation } formats
+        const normalizeBi = (raw: Array<any>): BilingualSegment[] =>
+          raw.map((s) => ({
+            id: String(s.id ?? s.start ?? s.startTime ?? ''),
+            startTime: s.start ?? s.startTime ?? 0,
+            endTime: s.end ?? s.endTime ?? 0,
+            korean: s.text ?? s.korean ?? '',
+            vietnamese: s.translation ?? s.vietnamese ?? '',
+          }));
 
         const biSub = subs.find(s => s.bilingualContent);
         if (biSub?.bilingualContent) {
-          setBiSegments(biSub.bilingualContent as BilingualSegment[]);
+          setBiSegments(normalizeBi(biSub.bilingualContent as Array<any>));
+        }
+
+        const biSubByLang = subs.find(s =>
+          s.language === 'vi' && (s as any).bilingualContent
+        );
+        if (!biSub && biSubByLang) {
+          setBiSegments(normalizeBi(biSubByLang.bilingualContent as Array<any>));
         }
       })
       .catch(() => setError('Không thể tải phụ đề. Video có thể chưa có phụ đề.'))
@@ -221,14 +248,15 @@ function SubtitlePickerStep({
 
     for (const seg of koSegments) {
       if (!selectedIds.has(seg.id)) continue;
+      // bilingualContent stores { text, translation } (new) or { korean, vietnamese } (old) — normalize both
       const bi = biMap.get(seg.startTime);
 
       selected.push({
-        koText: seg.text,
+        koText: bi?.korean ?? seg.text,
         viText: bi?.vietnamese ?? '',
-        word: extractWord(seg.text),
+        word: extractWord(bi?.korean ?? seg.text),
         meaning: bi?.vietnamese ?? '',
-        exampleSentence: seg.text,
+        exampleSentence: bi?.korean ?? seg.text,
         exampleTranslation: bi?.vietnamese ?? '',
       });
     }
@@ -300,7 +328,7 @@ function SubtitlePickerStep({
 
       {/* Subtitle list */}
       <div className="space-y-1 max-h-[50vh] overflow-y-auto pr-1">
-        {koSegments.map((seg, idx) => {
+        {koSegments.map((seg) => {
           const bi = biMap.get(seg.startTime);
           const isSelected = selectedIds.has(seg.id);
 
@@ -328,12 +356,12 @@ function SubtitlePickerStep({
                     [{formatTime(seg.startTime)}]
                   </div>
 
-                  {/* Korean text */}
+                  {/* Korean text — bilingualContent uses 'text' (Korean), subtitleContent uses 'korean' */}
                   <p className="text-white text-sm leading-relaxed font-medium" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
-                    {seg.text}
+                    {bi?.korean ?? seg.text}
                   </p>
 
-                  {/* Vietnamese translation */}
+                  {/* Vietnamese translation — bilingualContent uses 'translation' */}
                   {bi?.vietnamese && (
                     <p className="text-slate-400 text-sm leading-relaxed mt-1">
                       {bi.vietnamese}

@@ -549,6 +549,30 @@
   animation: statusBlink 1s ease-in-out infinite;
 }
 
+/* kmate-dragger — dark glass Upload.Dragger */
+.kmate-dragger .ant-upload-drag {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px dashed rgba(124, 77, 255, 0.3) !important;
+  border-radius: 16px !important;
+  transition: all 0.2s ease !important;
+}
+.kmate-dragger .ant-upload-drag:hover {
+  border-color: rgba(124, 77, 255, 0.6) !important;
+  background: rgba(124, 77, 255, 0.05) !important;
+}
+.kmate-dragger .ant-upload-drag-icon {
+  color: #7C4DFF !important;
+}
+.kmate-dragger .ant-upload-text {
+  color: #e2e8f0 !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+.kmate-dragger .ant-upload-hint {
+  color: #64748b !important;
+  font-size: 12px !important;
+}
+
 .status-dot.disconnected {
   background-color: #ef4444;
 }

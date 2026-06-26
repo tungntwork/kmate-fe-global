@@ -60,7 +60,7 @@ export function ContinueWatchingCard({ item, onResume, onRemove }: ContinueWatch
       <Link href={`/learn/${item.videoId}?t=${resumeTime}`}>
         <Card
           className="bg-dark-300 border-dark-200 rounded-xl overflow-hidden cursor-pointer transition-all duration-200 hover:border-primary-500/50 hover:shadow-lg hover:shadow-primary-500/10 group"
-          bodyStyle={{ padding: 0 }}
+          styles={{ body: { padding: 0 } }}
           hoverable
         >
           {/* Thumbnail */}

@@ -86,6 +86,38 @@ export function UserHeader() {
     return () => window.removeEventListener('notifications:read-changed', handler);
   }, []);
 
+  // Realtime: listen for coin balance changes from video player custom event
+  useEffect(() => {
+    const handleCoinUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<{ balance: number }>).detail;
+      if (typeof detail.balance === 'number') {
+        setCoinBalance(detail.balance);
+        updateCoinBalance(detail.balance);
+      }
+    };
+    window.addEventListener('kmate:coin-updated', handleCoinUpdate);
+    return () => window.removeEventListener('kmate:coin-updated', handleCoinUpdate);
+  }, [updateCoinBalance]);
+
+  // Realtime: listen for video:unlocked socket events (emitted by backend after coin deduction)
+  const handleVideoUnlocked = useCallback((data: { videoId: string; coinDeducted: number }) => {
+    console.log('[Socket] video:unlocked received', data);
+    // Refresh balance after video unlock deducts coins
+    coinService.getBalance()
+      .then((r) => {
+        const balance = r.data.data.balance ?? 0;
+        setCoinBalance(balance);
+        updateCoinBalance(balance);
+      })
+      .catch(() => {});
+  }, [updateCoinBalance]);
+
+  useEffect(() => {
+    if (!socket) return;
+    socket.on('video:unlocked', handleVideoUnlocked);
+    return () => { socket.off('video:unlocked', handleVideoUnlocked); };
+  }, [socket, handleVideoUnlocked]);
+
   const userMenuItems = [
     {
       key: 'profile',

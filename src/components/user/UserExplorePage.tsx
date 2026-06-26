@@ -2,23 +2,26 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Spin, Input, Select } from "antd";
+import { Spin, Input } from "antd";
 import { App } from 'antd';
 import {
   PlayCircleOutlined,
-  PlusOutlined,
-  LeftOutlined,
-  RightOutlined,
+  ClockCircleOutlined,
   DollarOutlined,
   FireOutlined,
-  ClockCircleOutlined,
   SearchOutlined,
+  HeartOutlined,
+  HeartFilled,
+  RightOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import {
   videoService,
+  userService,
   type VideoSearchResult,
+  type CoinUnlockedVideo,
 } from '@/lib/api-services';
-import { userService } from '@/lib/api-services';
+import { useAuthStore } from '@/store/auth.store';
 
 function formatDuration(seconds: number): string {
   if (!seconds) return '—';
@@ -45,6 +48,22 @@ function extractYouTubeId(input: string): string | null {
   return null;
 }
 
+const getThumbnail = (video: VideoSearchResult): string => {
+  if (video.thumbnail && video.thumbnail.trim()) {
+    return video.thumbnail;
+  }
+  if (video.youtubeId) {
+    return `https://i.ytimg.com/vi/${video.youtubeId}/hqdefault.jpg`;
+  }
+  return 'https://i.ytimg.com/vi/empty/mqdefault.jpg';
+};
+
+// Strip trailing YouTube hashtag artifacts from titles (e.g. "PSY GANGNAM STYLE (Official MV) #??? #PSY")
+function cleanTitle(title: string): string {
+  if (!title) return 'Video không có tiêu đề';
+  return title.replace(/\s+#[^\s#]+$/g, '').trim() || title;
+}
+
 const LEVEL_MAP: Record<string, string> = {
   beginner: 'Sơ cấp',
   intermediate: 'Trung cấp',
@@ -53,45 +72,126 @@ const LEVEL_MAP: Record<string, string> = {
   en: 'Ngôn ngữ: Anh',
 };
 
+// ── Reusable video card with optional heart button ──────────────────────────
+interface VideoCardItemProps {
+  video: VideoSearchResult;
+  isFavorited?: boolean;
+  onClick?: () => void;
+  onToggleFavorite?: (e: React.MouseEvent) => void;
+  showFavoriteBtn?: boolean;
+  badge?: string;
+  badgeColor?: string;
+  minWidth?: number;
+  showDuration?: boolean; // show duration at bottom-right (for search results)
+}
+
+function VideoCardItem({
+  video,
+  isFavorited = false,
+  onClick,
+  onToggleFavorite,
+  showFavoriteBtn = false,
+  badge,
+  badgeColor = 'bg-primary/90',
+  minWidth = 280,
+  showDuration = false,
+}: VideoCardItemProps) {
+  return (
+    <div
+      style={{ minWidth, maxWidth: minWidth }}
+      className="group cursor-pointer shrink-0 flex flex-col"
+      onClick={onClick}
+    >
+      <div className="relative rounded-2xl overflow-hidden mb-3 shrink-0 bg-dark-300 aspect-[16/10]">
+        <img
+          alt={video.title}
+          src={getThumbnail(video)}
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+          onError={(e) => {
+            const img = e.currentTarget as HTMLImageElement;
+            const parts = img.src.split('/');
+            parts.pop();
+            parts.push('default.jpg');
+            const fallback = parts.join('/');
+            if (img.src !== fallback) img.src = fallback;
+          }}
+        />
+        <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-all" />
+        {badge && (
+          <div className="absolute bottom-3 left-3">
+            <span
+              style={{ background: badge.startsWith('#') ? badge : undefined }}
+              className={`px-2 py-1 rounded-lg text-white text-[10px] font-bold uppercase backdrop-blur-md ${!badge.startsWith('#') ? badgeColor : ''}`}
+            >
+              {badge}
+            </span>
+          </div>
+        )}
+        {showFavoriteBtn && (
+          <button
+            onClick={onToggleFavorite}
+            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition-colors z-10"
+          >
+            {isFavorited
+              ? <HeartFilled style={{ color: '#f43f5e', fontSize: 14 }} />
+              : <HeartOutlined style={{ color: '#f43f5e', fontSize: 14 }} />}
+          </button>
+        )}
+        {showDuration && (
+          <div className="absolute bottom-2 right-2 glass text-white text-[10px] px-2 py-0.5 rounded font-bold">
+            {formatDuration(video.duration)}
+          </div>
+        )}
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
+            <PlayCircleOutlined style={{ color: '#0B0B0F', fontSize: 22 }} />
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-col min-h-[3.5rem]">
+        <h4
+          title={video.title}
+          className="text-white font-bold text-sm leading-tight group-hover:text-primary transition-colors line-clamp-2"
+        >
+          {cleanTitle(video.title)}
+        </h4>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-[10px] text-slate-500">{video.channelTitle}</span>
+          <span className="text-[10px] text-slate-500">•</span>
+          <span className="text-[10px] text-slate-500">{formatViewCount(video.viewCount)}</span>
+        </div>
+        {video.hasSubtitles && (
+          <span className="text-[10px] text-primary mt-1">📝 Có phụ đề</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function UserExplorePage() {
   const { message } = App.useApp();
   const router = useRouter();
-  const [featured, setFeatured] = useState<VideoSearchResult[]>([]);
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const [trending, setTrending] = useState<VideoSearchResult[]>([]);
-  const [searchResults, setSearchResults] = useState<VideoSearchResult[]>([]);
-  const [searchQuery, setSearchQuery] = useState('Kpop 2026');
-  const [loadingFeatured, setLoadingFeatured] = useState(true);
-  const [loadingTrending, setLoadingTrending] = useState(true);
   const [kpopVideos, setKpopVideos] = useState<VideoSearchResult[]>([]);
   const [dramaClips, setDramaClips] = useState<VideoSearchResult[]>([]);
   const [beginnerVideos, setBeginnerVideos] = useState<VideoSearchResult[]>([]);
+  const [searchResults, setSearchResults] = useState<VideoSearchResult[]>([]);
+  const [searchQuery, setSearchQuery] = useState('Kpop 2026');
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [totalVideosWatched, setTotalVideosWatched] = useState(0);
   const [totalMinutes, setTotalMinutes] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [coinBalance, setCoinBalance] = useState(0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toastTimerRef = useRef<any>(null);
+  const isAuth = useAuthStore((s) => s.isAuthenticated);
 
-  const loadTrending = useCallback(() => {
-    setLoadingTrending(true);
-    videoService.discoverTrending({ limit: 12 })
-      .then((r) => setTrending(r.data.data.videos))
-      .catch(() => { message.error('Khong the tai danh sach xu huong'); })
-      .finally(() => setLoadingTrending(false));
-  }, []);
+  const [coinUnlockedVideos, setCoinUnlockedVideos] = useState<CoinUnlockedVideo[]>([]);
+  const [loadingCoinUnlocked, setLoadingCoinUnlocked] = useState(false);
+  const [favoriteVideos, setFavoriteVideos] = useState<CoinUnlockedVideo[]>([]);
+  const [loadingFavorites, setLoadingFavorites] = useState(false);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    // Load featured / trending carousel
-    videoService.discoverTrending({ limit: 5 })
-      .then((r) => {
-        setFeatured(r.data.data.videos);
-        setTrending(r.data.data.videos);
-      })
-      .catch(() => { message.error('Khong the tai video noi bat'); })
-      .finally(() => setLoadingFeatured(false));
-
-    loadTrending();
-
     // Load predefined sections
     videoService.discoverSearch({ q: 'Kpop 2026', limit: 6 })
       .then((r) => setKpopVideos(r.data.data.videos))
@@ -108,8 +208,28 @@ export default function UserExplorePage() {
       .then((r) => {
         setTotalVideosWatched(r.data.data.totalVideosWatched);
         setTotalMinutes(r.data.data.totalMinutesLearned);
+        setStreak(r.data.data.currentStreak ?? 0);
+        setCoinBalance(r.data.data.currentCoinBalance ?? 0);
       })
       .catch(() => {});
+
+    // Load coin-unlocked videos (authenticated)
+    if (isAuth) {
+      setLoadingCoinUnlocked(true);
+      videoService.getCoinUnlockedVideos({ limit: 10 })
+        .then((r) => setCoinUnlockedVideos(r.data.data.videos))
+        .catch(() => {})
+        .finally(() => setLoadingCoinUnlocked(false));
+
+      setLoadingFavorites(true);
+      videoService.getFavorites({ limit: 10 })
+        .then((r) => {
+          setFavoriteVideos(r.data.data.videos);
+          setFavoriteIds(new Set(r.data.data.videos.map((v) => v.youtubeId)));
+        })
+        .catch(() => {})
+        .finally(() => setLoadingFavorites(false));
+    }
 
     // Initial search — delay error toast to 15s so fast responses never show it
     const msgKey = message.loading({ content: 'Đang tải video...', duration: 0, key: 'explore-load' });
@@ -133,7 +253,7 @@ export default function UserExplorePage() {
       message.destroy('explore-load');
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
-  }, [loadTrending]);
+  }, [isAuth]);
 
   const handleSearch = (q: string) => {
     setSearchQuery(q);
@@ -165,7 +285,44 @@ export default function UserExplorePage() {
     router.push(`/learn/${video.youtubeId}`);
   };
 
-  const slide = featured[currentSlide];
+  const handleCoinVideoClick = (video: CoinUnlockedVideo) => {
+    message.destroy('explore-load');
+    message.destroy('search-load');
+    router.push(`/learn/${video.youtubeId}`);
+  };
+
+  const handleToggleFavoriteByYtId = async (ytId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isAuth) {
+      message.warning({ content: 'Vui lòng đăng nhập để thêm yêu thích' });
+      return;
+    }
+    const wasFavorited = favoriteIds.has(ytId);
+    setFavoriteIds((prev) => {
+      const next = new Set(prev);
+      if (wasFavorited) next.delete(ytId);
+      else next.add(ytId);
+      return next;
+    });
+    // Keep favoriteVideos in sync (remove on un-favorite)
+    if (wasFavorited) {
+      setFavoriteVideos((prev) => prev.filter((v) => v.youtubeId !== ytId));
+    }
+    try {
+      await videoService.toggleFavorite(ytId);
+    } catch {
+      setFavoriteIds((prev) => {
+        const next = new Set(prev);
+        if (wasFavorited) next.add(ytId);
+        else next.delete(ytId);
+        return next;
+      });
+      if (wasFavorited) {
+        // Re-add to favoriteVideos — fetch is expensive so skip it on error
+      }
+      message.error({ content: 'Không thể cập nhật yêu thích' });
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -184,186 +341,6 @@ export default function UserExplorePage() {
           />
         </section>
 
-        {/* Featured Carousel */}
-        {!loadingFeatured && featured.length > 0 ? (
-          <section className="mb-12">
-            <div className="flex items-end justify-between mb-6">
-              <div>
-                <h2 className="text-3xl lg:text-4xl font-black text-white mb-2 tracking-tight">
-                  Khám phá video học tiếng Hàn
-                </h2>
-                <p className="text-slate-400 text-sm">
-                  Học tiếng Hàn qua phim, nhạc, văn hóa và cuộc sống thường nhật
-                </p>
-              </div>
-              <div className="hidden lg:flex items-center gap-2">
-                <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">
-                  {currentSlide + 1} / {featured.length}
-                </span>
-              </div>
-            </div>
-
-            {/* Hero Banner */}
-            <div className="relative rounded-3xl overflow-hidden h-[460px] lg:h-[520px]">
-              {slide ? (
-                <>
-                  <img
-                    alt={slide.title}
-                    src={slide.thumbnail}
-                    className="absolute inset-0 w-full h-full object-cover transition-all duration-700"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent" />
-
-                  <div className="absolute bottom-0 left-0 right-0 p-8 lg:p-12">
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className="px-3 py-1 rounded-lg bg-primary/90 text-background-dark text-[10px] font-black uppercase tracking-wider">
-                        {LEVEL_MAP[slide.language] ?? slide.language ?? 'Korean'}
-                      </span>
-                      {slide.hasSubtitles && (
-                        <span className="px-3 py-1 rounded-lg bg-secondary/90 text-white text-[10px] font-black uppercase tracking-wider">
-                          Phụ đề
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="text-3xl lg:text-5xl font-black text-white mb-4 leading-tight line-clamp-2">
-                      {slide.title}
-                    </h3>
-                    <p className="text-slate-300 text-base lg:text-lg mb-6 lg:mb-8 line-clamp-2">
-                      {slide.description || slide.channelTitle}
-                    </p>
-                    <div className="flex items-center gap-6 mb-6 lg:mb-8 flex-wrap">
-                      <div className="flex items-center gap-2">
-                        <ClockCircleOutlined style={{ color: '#00e5ff', fontSize: 20 }} />
-                        <span className="text-sm text-slate-300">{formatDuration(slide.duration)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-slate-300">{formatViewCount(slide.viewCount)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-slate-300">{slide.channelTitle}</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-4 flex-wrap">
-                      <button
-                        onClick={() => handleVideoClick(slide)}
-                        className="bg-primary hover:bg-primary/90 text-background-dark font-bold px-6 lg:px-8 py-3 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-primary/20"
-                      >
-                        <PlayCircleOutlined style={{ fontSize: 20 }} />
-                        Xem Ngay
-                      </button>
-                      <button className="glass hover:bg-white/10 text-white font-bold px-6 lg:px-8 py-3 rounded-xl flex items-center gap-2 transition-all">
-                        <PlusOutlined style={{ fontSize: 18 }} />
-                        Lưu Danh Sách
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Navigation arrows */}
-                  <button
-                    onClick={() => setCurrentSlide((prev) => (prev - 1 + featured.length) % featured.length)}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 z-40 w-10 h-10 rounded-full glass flex items-center justify-center hover:bg-white/10 transition-colors cursor-pointer"
-                  >
-                    <LeftOutlined style={{ color: 'white', fontSize: 16 }} />
-                  </button>
-                  <button
-                    onClick={() => setCurrentSlide((prev) => (prev + 1) % featured.length)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 z-40 w-10 h-10 rounded-full glass flex items-center justify-center hover:bg-white/10 transition-colors cursor-pointer"
-                  >
-                    <RightOutlined style={{ color: 'white', fontSize: 16 }} />
-                  </button>
-
-                  {/* Dot indicators */}
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2">
-                    {featured.map((_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setCurrentSlide(i)}
-                        className={`rounded-full transition-all cursor-pointer ${
-                          i === currentSlide ? 'w-6 h-2 bg-primary' : 'w-2 h-2 bg-white/40 hover:bg-white/60'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Spin />
-                </div>
-              )}
-            </div>
-          </section>
-        ) : loadingFeatured ? (
-          <div className="flex items-center justify-center h-64 mb-12">
-            <Spin size="large" />
-          </div>
-        ) : null}
-
-        {/* Filter Bar */}
-        <section className="mb-8 flex flex-wrap items-center gap-4">
-          <Select
-            placeholder="Ngôn ngữ"
-            allowClear
-            className="!min-w-[150px]"
-            classNames={{ popup: { root: '!bg-dark-400 !border !border-white/10' } }}
-            options={[
-              { value: 'any', label: 'Tất cả' },
-              { value: 'ko', label: 'Tiếng Hàn' },
-              { value: 'en', label: 'Tiếng Anh' },
-            ]}
-            onChange={(val) => {
-              if (val) {
-                videoService.discoverSearch({ q: searchQuery || 'Kpop 2026', language: val, limit: 8 })
-                  .then((r) => setSearchResults(r.data.data.videos))
-                  .catch(() => {});
-              }
-            }}
-          />
-          <Select
-            placeholder="Thời lượng"
-            allowClear
-            className="!min-w-[150px]"
-            classNames={{ popup: { root: '!bg-dark-400 !border !border-white/10' } }}
-            options={[
-              { value: 'any', label: 'Tất cả' },
-              { value: 'short', label: 'Ngắn (< 4 phút)' },
-              { value: 'medium', label: 'Trung bình (4-20 phút)' },
-              { value: 'long', label: 'Dài (> 20 phút)' },
-            ]}
-            onChange={(val) => {
-              if (val) {
-                videoService.discoverSearch({ q: searchQuery || 'Kpop 2026', duration: val, limit: 8 })
-                  .then((r) => setSearchResults(r.data.data.videos))
-                  .catch(() => {});
-              }
-            }}
-          />
-          <Select
-            placeholder="Phụ đề"
-            allowClear
-            className="!min-w-[130px]"
-            classNames={{ popup: { root: '!bg-dark-400 !border !border-white/10' } }}
-            options={[
-              { value: 'any', label: 'Tất cả' },
-              { value: 'subtitled', label: 'Có phụ đề' },
-              { value: 'korean_sub', label: 'Phụ đề Hàn' },
-            ]}
-            onChange={(val) => {
-              if (val) {
-                videoService.discoverSearch({ q: searchQuery || 'Kpop 2026', subtitleFilter: val, limit: 8 })
-                  .then((r) => setSearchResults(r.data.data.videos))
-                  .catch(() => {});
-              }
-            }}
-          />
-          <button
-            onClick={loadTrending}
-            className="px-4 py-2 rounded-xl bg-white/5 text-slate-400 text-xs font-bold border border-white/10 hover:bg-white/10 hover:text-white transition-all"
-          >
-            Tải lại xu hướng
-          </button>
-        </section>
-
         {/* Video Grid */}
         <section className="mb-16">
           <div className="flex items-center justify-between mb-6">
@@ -377,42 +354,18 @@ export default function UserExplorePage() {
           ) : searchResults.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {searchResults.map((video) => (
-                <div
+                <VideoCardItem
                   key={video.youtubeId}
-                  className="group cursor-pointer"
+                  video={video}
+                  badge={video.isKoreanVideo ? '🇰🇷 Hàn' : LEVEL_MAP[video.language] ?? video.language ?? 'Video'}
+                  badgeColor="bg-primary/90"
                   onClick={() => handleVideoClick(video)}
-                >
-                  <div className="relative aspect-video rounded-2xl overflow-hidden mb-3 border border-white/5">
-                    <img
-                      alt={video.title}
-                      src={video.thumbnail}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                    />
-                    <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors" />
-                    <div className="absolute top-2 right-2 bg-primary/90 text-background-dark font-black text-[10px] px-2 py-0.5 rounded uppercase">
-                      {video.isKoreanVideo ? '🇰🇷 Hàn' : LEVEL_MAP[video.language] ?? video.language ?? 'Video'}
-                    </div>
-                    <div className="absolute bottom-2 right-2 glass text-white text-[10px] px-2 py-0.5 rounded font-bold">
-                      {formatDuration(video.duration)}
-                    </div>
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center shadow-lg shadow-primary/40">
-                        <PlayCircleOutlined style={{ color: '#0B0B0F', fontSize: 28 }} />
-                      </div>
-                    </div>
-                  </div>
-                  <h4 className="text-white font-bold leading-tight group-hover:text-primary transition-colors line-clamp-2 text-sm">
-                    {video.title}
-                  </h4>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-[10px] text-slate-400">{video.channelTitle}</span>
-                    <span className="text-[10px] text-slate-500">•</span>
-                    <span className="text-[10px] text-slate-500">{formatViewCount(video.viewCount)}</span>
-                  </div>
-                  {video.hasSubtitles && (
-                    <span className="text-[10px] text-primary mt-1 inline-block">📝 Có phụ đề</span>
-                  )}
-                </div>
+                  showFavoriteBtn={isAuth}
+                  isFavorited={favoriteIds.has(video.youtubeId)}
+                  onToggleFavorite={(e) => handleToggleFavoriteByYtId(video.youtubeId, e)}
+                  minWidth={0}
+                  showDuration
+                />
               ))}
             </div>
           ) : (
@@ -421,50 +374,6 @@ export default function UserExplorePage() {
             </div>
           )}
         </section>
-
-        {/* Trending Section */}
-        {!loadingTrending && trending.length > 0 && (
-          <section className="mb-16">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-1 h-8 bg-gradient-to-b from-orange-400 to-red-500 rounded-full" />
-                <h3 className="text-2xl font-black text-white">Xu hướng tuần này</h3>
-              </div>
-            </div>
-            <div className="flex gap-6 overflow-x-auto pb-4 custom-scrollbar">
-              {trending.map((video) => (
-                <div
-                  key={video.youtubeId}
-                  className="min-w-[280px] group cursor-pointer shrink-0"
-                  onClick={() => handleVideoClick(video)}
-                >
-                  <div className="relative aspect-[16/10] rounded-2xl overflow-hidden mb-3">
-                    <img
-                      alt={video.title}
-                      src={video.thumbnail}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                    />
-                    <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-all" />
-                    <div className="absolute bottom-3 left-3 flex items-center gap-2">
-                      <span className="px-2 py-1 rounded-lg bg-white/20 backdrop-blur-md text-white text-[10px] font-bold uppercase">
-                        {video.language === 'ko' ? '🇰🇷 Hàn' : '🌐 Phổ biến'}
-                      </span>
-                    </div>
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
-                        <PlayCircleOutlined style={{ color: '#0B0B0F', fontSize: 22 }} />
-                      </div>
-                    </div>
-                  </div>
-                  <h4 className="text-white font-bold text-sm leading-tight group-hover:text-primary transition-colors line-clamp-2">
-                    {video.title}
-                  </h4>
-                  <p className="text-xs text-slate-500 mt-1">{formatViewCount(video.viewCount)}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
 
         {/* KPOP Videos Section */}
         {kpopVideos.length > 0 && (
@@ -477,34 +386,16 @@ export default function UserExplorePage() {
             </div>
             <div className="flex gap-6 overflow-x-auto pb-4 custom-scrollbar">
               {kpopVideos.map((video) => (
-                <div
+                <VideoCardItem
                   key={video.youtubeId}
-                  className="min-w-[280px] group cursor-pointer shrink-0"
+                  video={video}
+                  badge="Kpop"
+                  badgeColor="bg-white/20"
                   onClick={() => handleVideoClick(video)}
-                >
-                  <div className="relative aspect-[16/10] rounded-2xl overflow-hidden mb-3">
-                    <img
-                      alt={video.title}
-                      src={video.thumbnail}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                    />
-                    <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-all" />
-                    <div className="absolute bottom-3 left-3 flex items-center gap-2">
-                      <span className="px-2 py-1 rounded-lg bg-white/20 backdrop-blur-md text-white text-[10px] font-bold uppercase">
-                        Kpop
-                      </span>
-                    </div>
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
-                        <PlayCircleOutlined style={{ color: '#0B0B0F', fontSize: 22 }} />
-                      </div>
-                    </div>
-                  </div>
-                  <h4 className="text-white font-bold text-sm leading-tight group-hover:text-primary transition-colors line-clamp-2">
-                    {video.title}
-                  </h4>
-                  <p className="text-xs text-slate-500 mt-1">{formatViewCount(video.viewCount)}</p>
-                </div>
+                  showFavoriteBtn={isAuth}
+                  isFavorited={favoriteIds.has(video.youtubeId)}
+                  onToggleFavorite={(e) => handleToggleFavoriteByYtId(video.youtubeId, e)}
+                />
               ))}
             </div>
           </section>
@@ -521,34 +412,16 @@ export default function UserExplorePage() {
             </div>
             <div className="flex gap-6 overflow-x-auto pb-4 custom-scrollbar">
               {dramaClips.map((video) => (
-                <div
+                <VideoCardItem
                   key={video.youtubeId}
-                  className="min-w-[280px] group cursor-pointer shrink-0"
+                  video={video}
+                  badge="Drama"
+                  badgeColor="bg-white/20"
                   onClick={() => handleVideoClick(video)}
-                >
-                  <div className="relative aspect-[16/10] rounded-2xl overflow-hidden mb-3">
-                    <img
-                      alt={video.title}
-                      src={video.thumbnail}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                    />
-                    <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-all" />
-                    <div className="absolute bottom-3 left-3 flex items-center gap-2">
-                      <span className="px-2 py-1 rounded-lg bg-white/20 backdrop-blur-md text-white text-[10px] font-bold uppercase">
-                        Drama
-                      </span>
-                    </div>
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
-                        <PlayCircleOutlined style={{ color: '#0B0B0F', fontSize: 22 }} />
-                      </div>
-                    </div>
-                  </div>
-                  <h4 className="text-white font-bold text-sm leading-tight group-hover:text-primary transition-colors line-clamp-2">
-                    {video.title}
-                  </h4>
-                  <p className="text-xs text-slate-500 mt-1">{formatViewCount(video.viewCount)}</p>
-                </div>
+                  showFavoriteBtn={isAuth}
+                  isFavorited={favoriteIds.has(video.youtubeId)}
+                  onToggleFavorite={(e) => handleToggleFavoriteByYtId(video.youtubeId, e)}
+                />
               ))}
             </div>
           </section>
@@ -565,34 +438,16 @@ export default function UserExplorePage() {
             </div>
             <div className="flex gap-6 overflow-x-auto pb-4 custom-scrollbar">
               {beginnerVideos.map((video) => (
-                <div
+                <VideoCardItem
                   key={video.youtubeId}
-                  className="min-w-[280px] group cursor-pointer shrink-0"
+                  video={video}
+                  badge="Sơ cấp"
+                  badgeColor="bg-green-600/80"
                   onClick={() => handleVideoClick(video)}
-                >
-                  <div className="relative aspect-[16/10] rounded-2xl overflow-hidden mb-3">
-                    <img
-                      alt={video.title}
-                      src={video.thumbnail}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                    />
-                    <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-all" />
-                    <div className="absolute bottom-3 left-3 flex items-center gap-2">
-                      <span className="px-2 py-1 rounded-lg bg-white/20 backdrop-blur-md text-white text-[10px] font-bold uppercase">
-                        Sơ cấp
-                      </span>
-                    </div>
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
-                        <PlayCircleOutlined style={{ color: '#0B0B0F', fontSize: 22 }} />
-                      </div>
-                    </div>
-                  </div>
-                  <h4 className="text-white font-bold text-sm leading-tight group-hover:text-primary transition-colors line-clamp-2">
-                    {video.title}
-                  </h4>
-                  <p className="text-xs text-slate-500 mt-1">{formatViewCount(video.viewCount)}</p>
-                </div>
+                  showFavoriteBtn={isAuth}
+                  isFavorited={favoriteIds.has(video.youtubeId)}
+                  onToggleFavorite={(e) => handleToggleFavoriteByYtId(video.youtubeId, e)}
+                />
               ))}
             </div>
           </section>
@@ -603,8 +458,8 @@ export default function UserExplorePage() {
           {[
             { icon: <PlayCircleOutlined />, label: 'Video đã học', value: totalVideosWatched },
             { icon: <ClockCircleOutlined />, label: 'Phút học', value: totalMinutes },
-            { icon: <FireOutlined />, label: 'Ngày streak', value: '—' },
-            { icon: <DollarOutlined />, label: 'Xu', value: '—' },
+            { icon: <FireOutlined />, label: 'Ngày streak', value: streak },
+            { icon: <DollarOutlined />, label: 'Xu', value: coinBalance },
           ].map((stat, i) => (
             <div key={i} className="glass p-6 rounded-2xl flex flex-col items-center gap-3 text-center">
               <span style={{ color: '#00e5ff' }} className="text-3xl">{stat.icon}</span>
@@ -613,6 +468,157 @@ export default function UserExplorePage() {
             </div>
           ))}
         </section>
+
+        {/* Videos I've Used Coins On */}
+        {isAuth && (
+          <section className="mb-16">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-1 h-8 bg-gradient-to-b from-yellow-400 to-amber-500 rounded-full" />
+                <h3 className="text-2xl font-black text-white">Video đã dùng xu</h3>
+              </div>
+              <button
+                onClick={() => router.push('/user/history')}
+                className="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors font-medium"
+              >
+                Xem tất cả <RightOutlined style={{ fontSize: 10 }} />
+              </button>
+            </div>
+            {loadingCoinUnlocked ? (
+              <div className="flex items-center justify-center py-8">
+                <Spin />
+              </div>
+            ) : coinUnlockedVideos.length > 0 ? (
+              <div className="flex gap-5 overflow-x-auto pb-4 custom-scrollbar">
+                {coinUnlockedVideos.map((video) => (
+                  <div
+                    key={video.videoId}
+                    className="min-w-[220px] max-w-[220px] group cursor-pointer shrink-0 flex flex-col"
+                    onClick={() => handleCoinVideoClick(video)}
+                  >
+                    <div className="relative rounded-2xl overflow-hidden mb-3 shrink-0 bg-dark-300 aspect-[16/10]">
+                      <img
+                        alt={video.title}
+                        src={video.thumbnailUrl || `https://i.ytimg.com/vi/${video.youtubeId}/hqdefault.jpg`}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        onError={(e) => {
+                          const img = e.currentTarget as HTMLImageElement;
+                          img.src = `https://i.ytimg.com/vi/${video.youtubeId}/hqdefault.jpg`;
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-all" />
+                      <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/90 text-black text-[10px] font-black uppercase">
+                        <LockOutlined style={{ fontSize: 8 }} />
+                        Đã mở khóa
+                      </div>
+                      {video.progress > 0 && (
+                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+                          <div
+                            className="h-full bg-primary transition-all"
+                            style={{ width: `${Math.min(100, video.progress)}%` }}
+                          />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
+                          <PlayCircleOutlined style={{ color: '#0B0B0F', fontSize: 22 }} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col min-h-[3.5rem]">
+                      <h4 className="text-white font-bold text-xs leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                        {video.title}
+                      </h4>
+                      <p className="text-[10px] text-slate-500 mt-1">{video.channelTitle}</p>
+                      {video.progress > 0 && (
+                        <p className="text-[10px] text-primary mt-1">
+                          {Math.round(video.progress)}% đã xem
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="user-glass-card p-6 text-center">
+                <LockOutlined style={{ color: '#00e5ff', fontSize: 28 }} className="mb-3" />
+                <p className="text-slate-400 text-sm">Bạn chưa mở khóa video nào bằng xu.</p>
+                <p className="text-slate-500 text-xs mt-1">Tìm video và dùng xu để xem phụ đề AI.</p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Favorites */}
+        {isAuth && (
+          <section className="mb-16">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-1 h-8 bg-gradient-to-b from-pink-400 to-rose-500 rounded-full" />
+                <h3 className="text-2xl font-black text-white">Yêu thích</h3>
+              </div>
+            </div>
+            {loadingFavorites ? (
+              <div className="flex items-center justify-center py-8">
+                <Spin />
+              </div>
+            ) : favoriteVideos.length > 0 ? (
+              <div className="flex gap-5 overflow-x-auto pb-4 custom-scrollbar">
+                {favoriteVideos.map((video) => (
+                  <div
+                    key={video.videoId}
+                    className="min-w-[220px] max-w-[220px] group cursor-pointer shrink-0 flex flex-col"
+                    onClick={() => handleCoinVideoClick(video)}
+                  >
+                    <div className="relative rounded-2xl overflow-hidden mb-3 shrink-0 bg-dark-300 aspect-[16/10]">
+                      <img
+                        alt={video.title}
+                        src={video.thumbnailUrl || `https://i.ytimg.com/vi/${video.youtubeId}/hqdefault.jpg`}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        onError={(e) => {
+                          const img = e.currentTarget as HTMLImageElement;
+                          img.src = `https://i.ytimg.com/vi/${video.youtubeId}/hqdefault.jpg`;
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-all" />
+                      <button
+                        onClick={(e) => handleToggleFavoriteByYtId(video.youtubeId, e)}
+                        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition-colors"
+                      >
+                        <HeartFilled style={{ color: '#f43f5e', fontSize: 14 }} />
+                      </button>
+                      {video.progress > 0 && (
+                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+                          <div
+                            className="h-full bg-primary transition-all"
+                            style={{ width: `${Math.min(100, video.progress)}%` }}
+                          />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
+                          <PlayCircleOutlined style={{ color: '#0B0B0F', fontSize: 22 }} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col min-h-[3.5rem]">
+                      <h4 className="text-white font-bold text-xs leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                        {video.title}
+                      </h4>
+                      <p className="text-[10px] text-slate-500 mt-1">{video.channelTitle}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="user-glass-card p-6 text-center">
+                <HeartOutlined style={{ color: '#f43f5e', fontSize: 28 }} className="mb-3" />
+                <p className="text-slate-400 text-sm">Chưa có video yêu thích.</p>
+                <p className="text-slate-500 text-xs mt-1">Bấm trái tim trên video đã mở khóa để lưu lại.</p>
+              </div>
+            )}
+          </section>
+        )}
       </main>
     </div>
   );

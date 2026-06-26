@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Spin, Modal,  } from "antd";
+import { Button, Spin, Modal, Select } from "antd";
 import { App } from 'antd';
 import {
   QuestionOutlined,
@@ -22,7 +22,6 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { quizService, flashcardService, type QuizDeck, type QuizQuestion, type QuizResult } from '@/lib/api-services';
 import { useQuizStore } from '@/store/quiz.store';
-import { ConfirmModal } from '@/components/common/confirm-modal';
 
 type Screen = 'home' | 'quiz' | 'result';
 
@@ -319,17 +318,18 @@ function QuizHomeScreen({
               <span className="text-xs text-slate-500">
                 {startIdx}-{endIdx} / {sorted.length} bộ
               </span>
-              <select
+              <Select
                 value={sortBy}
-                onChange={(e) => { setSortBy(e.target.value as QuizSortOption); setPage(1); }}
-                className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary cursor-pointer"
-              >
-                <option value="newest">Mới nhất</option>
-                <option value="name_asc">Tên A→Z</option>
-                <option value="name_desc">Tên Z→A</option>
-                <option value="cards_desc">Nhiều thẻ nhất</option>
-                <option value="cards_asc">Ít thẻ nhất</option>
-              </select>
+                onChange={(value) => { setSortBy(value as QuizSortOption); setPage(1); }}
+                className="min-w-[130px]"
+                options={[
+                  { value: 'newest', label: 'Mới nhất' },
+                  { value: 'name_asc', label: 'Tên A→Z' },
+                  { value: 'name_desc', label: 'Tên Z→A' },
+                  { value: 'cards_desc', label: 'Nhiều thẻ nhất' },
+                  { value: 'cards_asc', label: 'Ít thẻ nhất' },
+                ]}
+              />
               <div className="flex items-center rounded-lg border border-white/10 overflow-hidden">
                 <button
                   onClick={() => setViewMode('grid')}
@@ -953,6 +953,7 @@ export default function UserQuizPage() {
   const [resumeLoading, setResumeLoading] = useState(false);
   const [submittedResult, setSubmittedResult] = useState<QuizResult | null>(null);
   const [lastQuizInfo, setLastQuizInfo] = useState<{ quizId: string; mode: string; deckId?: string; deckName?: string; sourceType?: string; sourceIds?: object } | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{ id: string; name: string } | null>(null);
   // Used by handleRetry to inject a quiz session without going through Zustand persist
   const [pendingRetrySession, setPendingRetrySession] = useState<Omit<import('@/store/quiz.store').QuizSession, 'status'> | null>(null);
 
@@ -1334,6 +1335,61 @@ export default function UserQuizPage() {
         </p>
       </Modal>
 
+      {/* Delete-quiz confirmation */}
+      <Modal
+        title={
+          <span className="flex items-center gap-2 text-white">
+            <span className="text-red-400">⚠</span>
+            Xác nhận xóa
+          </span>
+        }
+        open={!!deleteModal}
+        onCancel={() => setDeleteModal(null)}
+        footer={[
+          <Button key="cancel" onClick={() => setDeleteModal(null)} className="!rounded-xl">
+            Hủy
+          </Button>,
+          <Button
+            key="delete"
+            danger
+            type="primary"
+            onClick={async () => {
+              if (!deleteModal) return;
+              try {
+                await flashcardService.deleteDeck(deleteModal.id);
+                message.success('Đã xóa bộ quiz!');
+                const decksRes = await flashcardService.getDecks();
+                const data = decksRes.data.data;
+                if (data) {
+                  setDecks(data.map((d: any, i: number) => ({
+                    id: d.id,
+                    name: d.name,
+                    cardCount: d.cardCount ?? 0,
+                    dueCount: d.dueCount ?? 0,
+                    color: d.color ?? DECK_COLORS[i % DECK_COLORS.length],
+                    icon: d.icon ?? 'book',
+                  })));
+                }
+                const statsRes = await quizService.getStats();
+                if (statsRes.data.data) setStats(statsRes.data.data);
+              } catch {
+                message.error('Không thể xóa bộ quiz');
+              } finally {
+                setDeleteModal(null);
+              }
+            }}
+            className="!rounded-xl !font-bold"
+          >
+            Xóa
+          </Button>,
+        ]}
+        className="kmate-modal"
+      >
+        <p className="text-gray-300">
+          Bạn có muốn xóa bộ quiz &quot;{deleteModal?.name}&quot;? Hành động này không thể hoàn tác.
+        </p>
+      </Modal>
+
       {/* Quiz layout — full height when taking */}
       {isQuizActive ? (
         <div className="min-h-screen flex flex-col max-w-3xl mx-auto">
@@ -1399,36 +1455,7 @@ export default function UserQuizPage() {
                 onStartQuiz={handleStartQuiz}
                 wrongAnswersData={wrongAnswersData ?? undefined}
                 loadingWrongAnswers={loadingWrongAnswers}
-                onDeleteDeck={(id: string, name: string) => {
-                  ConfirmModal.confirm({
-                    title: 'Xác nhận xóa',
-                    message: 'Bạn có muốn xóa bộ quiz "' + name + '"?',
-                    danger: true,
-                    confirmText: 'Xóa',
-                    onConfirm: async () => {
-                      try {
-                        await flashcardService.deleteDeck(id);
-                        message.success('Đã xóa bộ quiz!');
-                        const decksRes = await flashcardService.getDecks();
-                        const data = decksRes.data.data;
-                        if (data) {
-                          setDecks(data.map((d: any, i: number) => ({
-                            id: d.id,
-                            name: d.name,
-                            cardCount: d.cardCount ?? 0,
-                            dueCount: d.dueCount ?? 0,
-                            color: d.color ?? DECK_COLORS[i % DECK_COLORS.length],
-                            icon: d.icon ?? 'book',
-                          })));
-                        }
-                        const statsRes = await quizService.getStats();
-                        if (statsRes.data.data) setStats(statsRes.data.data);
-                      } catch {
-                        message.error('Không thể xóa bộ quiz');
-                      }
-                    },
-                  });
-                }}
+                onDeleteDeck={(id: string, name: string) => setDeleteModal({ id, name })}
               />
             </motion.div>
           </AnimatePresence>

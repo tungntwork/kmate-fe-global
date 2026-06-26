@@ -131,7 +131,13 @@ export default function LearningPlayerPage() {
   const { resumeFromLastPosition, stats } = useTracking({
     videoId,
     autoStart: true,
+    blocked: showSubtitleModal,
   });
+
+  // Block video play while subtitle generation modal is open
+  useEffect(() => {
+    usePlayerStore.getState().setPlayBlocked(showSubtitleModal);
+  }, [showSubtitleModal]);
 
   useKeyboardShortcuts({ enabled: true, targetRef: containerRef });
 
@@ -199,6 +205,27 @@ export default function LearningPlayerPage() {
     setIsLoading(false);
   }, []);
 
+  // Stable play handler that respects playBlocked
+  const handlePlayClick = useCallback(() => {
+    const { playBlocked, play } = usePlayerStore.getState();
+    if (!playBlocked) play();
+  }, []);
+
+  // Track video play to backend
+  // Records the first play as a watch event so the dashboard "continue watching" works.
+  // Uses a ref so the callback is stable and doesn't change on re-renders.
+  const hasRecordedPlayRef = useRef(false);
+  const handleVideoPlay = useCallback(() => {
+    if (hasRecordedPlayRef.current) return;
+    if (!videoId) return;
+    hasRecordedPlayRef.current = true;
+    videoService.updateProgress(videoId, {
+      currentTime: 0,
+      duration: video?.duration || 0,
+      status: 'COMPLETED',
+    }).catch(() => {});
+  }, [videoId, video]);
+
   // ── Load video + subtitles ─────────────────────────────────────────
   // Guard ref: prevents the effect from running twice when balanceLoading flips true→false
   const contentLoadedRef = useRef(false);
@@ -233,10 +260,29 @@ export default function LearningPlayerPage() {
 
         // 3. Unlock video (triggers coin deduction on backend) — must await so DB record is created before subtitle fetch (15s timeout)
         try {
-          await withTimeout(videoService.unlockVideo(videoId));
+          const unlockRes = await withTimeout(videoService.unlockVideo(videoId));
+          const data = unlockRes?.data?.data;
+          if (data?.coinDeducted && data.coinDeducted > 0) {
+            // Update coin balance directly from response — no extra API call needed
+            const newBalance = data.newBalance ?? Math.max(0, (currentBalance || 0) - data.coinDeducted);
+            setCurrentBalance(newBalance);
+            window.dispatchEvent(new CustomEvent('kmate:coin-updated', { detail: { balance: newBalance } }));
+            message.warning({
+              content: `Đã sử dụng ${data.coinDeducted} xu để mở khóa video. Số dư hiện tại: ${newBalance} xu.`,
+              duration: 4,
+            });
+          } else if (data?.coinDeducted === 0) {
+            // Already unlocked or free video
+            message.success({ content: 'Video đã được mở khóa — không cần thêm xu.', duration: 3 });
+          }
         } catch (unlockErr: any) {
-          // Non-fatal: video might already be unlocked or free
-          console.warn('[Player] unlockVideo failed:', unlockErr?.response?.data ?? unlockErr?.message);
+          const status = unlockErr?.response?.status;
+          const code = unlockErr?.response?.data?.code;
+          if (status === 400 && code === 'INSUFFICIENT_BALANCE') {
+            message.error({ content: 'Số dư không đủ. Vui lòng nạp thêm xu!', duration: 4 });
+          } else {
+            console.warn('[Player] unlockVideo failed:', unlockErr?.response?.data ?? unlockErr?.message);
+          }
         }
 
         // 4. Load existing subtitles (video must exist in DB first) — 15s timeout
@@ -332,8 +378,20 @@ export default function LearningPlayerPage() {
   }, [router]);
 
   // ── Save word to vocabulary sidebar ───────────────────────────────
+  // Guard: prevent saving non-Korean words as flashcards.
+  // English words (e.g. English rap lyrics) are not meaningful in a
+  // Korean-learning context and should not produce garbage flashcard entries.
+  const KOREAN_REGEX = /[\uAC00-\uD7AF]/;
+
   const handleSaveWord = useCallback(async () => {
     if (!selectedWord || !currentSegment) return;
+
+    if (!KOREAN_REGEX.test(selectedWord.word)) {
+      message.info('Từ này không phải tiếng Hàn — không thể lưu flashcard.');
+      setSelectedWord(null);
+      return;
+    }
+
     setSavingWord(true);
     try {
       await saveWord({
@@ -495,6 +553,28 @@ export default function LearningPlayerPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vocabJobId]);
 
+  // Listen for video:unlocked socket event (coin deduction confirmation)
+  useEffect(() => {
+    if (!subtitleSocket) return;
+    const handler = (data: any) => {
+      if (data.youtubeId !== videoId) return;
+      if (data.coinDeducted && data.coinDeducted > 0) {
+        const newBalance = data.newBalance ?? (currentBalance - data.coinDeducted);
+        setCurrentBalance(newBalance);
+        window.dispatchEvent(new CustomEvent('kmate:coin-updated', { detail: { balance: newBalance } }));
+        message.warning({
+          content: `Đã sử dụng ${data.coinDeducted} xu để mở khóa video. Số dư hiện tại: ${newBalance} xu.`,
+          duration: 4,
+        });
+      }
+    };
+    const socket = (window as any).__socket;
+    if (!socket) return;
+    socket.on('video:unlocked', handler);
+    return () => { socket.off('video:unlocked', handler); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subtitleSocket, videoId]);
+
   // Listen for vocabulary:ready socket event
   useEffect(() => {
     if (!subtitleSocket) return;
@@ -505,6 +585,7 @@ export default function LearningPlayerPage() {
     if (!socket) return;
     socket.on('vocabulary:ready', handler);
     return () => { socket.off('vocabulary:ready', handler); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subtitleSocket, loadVocabWords]);
 
   // Create flashcards from selected vocabulary
@@ -533,12 +614,14 @@ export default function LearningPlayerPage() {
 
   const shortcuts = [
     { key: 'Space / K', action: 'Play / Pause' },
+    { key: '0-9', action: 'Seek 0%-90%' },
     { key: '← →', action: 'Seek ±5s' },
     { key: '↑ ↓', action: 'Volume' },
     { key: 'M', action: 'Mute' },
     { key: 'F', action: 'Fullscreen' },
     { key: 'C', action: 'Subtitles' },
     { key: ', .', action: 'Speed' },
+    { key: 'Dbl-click', action: 'Exit fullscreen' },
   ];
 
   // ── Video click → toggle play/pause ────────────────────────────────
@@ -640,8 +723,15 @@ export default function LearningPlayerPage() {
         {/* Video player column */}
         <div className="flex-1 flex flex-col relative">
           {/* Player container — click empty space to start/resume playback */}
-          <div className="relative flex-1 bg-black player-container" onClick={() => usePlayerStore.getState().play()}>
-            <VideoPlayer youtubeId={video?.youtubeId} poster={video?.thumbnail} onPlayerReady={handlePlayerReady} onError={(err) => { setLoadError('Video không thể tải: ' + err); setIsLoading(false); }} />
+          <div
+            className="relative flex-1 bg-black player-container"
+            onClick={handlePlayClick}
+            onDoubleClick={() => {
+              const { isFullscreen, exitFullscreen } = usePlayerStore.getState();
+              if (isFullscreen) exitFullscreen();
+            }}
+          >
+            <VideoPlayer youtubeId={video?.youtubeId} poster={video?.thumbnail} onPlayerReady={handlePlayerReady} onPlay={handleVideoPlay} onError={(err) => { setLoadError('Video không thể tải: ' + err); setIsLoading(false); }} />
             <SubtitleOverlay onWordClick={handleWordClick} />
             <PlayerControls />
           </div>

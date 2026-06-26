@@ -45,6 +45,8 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
   const setDisplayModeRef = useRef(setDisplayMode);
   const resetControlsTimerRef = useRef<(() => void) | null>(null);
   const toggleFullscreenRef = useRef<(() => void) | null>(null);
+  const seekToPercentRef = useRef<((percent: number) => void) | null>(null);
+  const exitFullscreenRef = useRef<(() => void) | null>(null);
 
   // Keep refs fresh
   togglePlayRef.current     = togglePlay;
@@ -81,6 +83,23 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
     }
   }, []);
   toggleFullscreenRef.current = toggleFullscreen;
+
+  const exitFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
+  }, []);
+  exitFullscreenRef.current = exitFullscreen;
+
+  const seekToPercent = useCallback((percent: number) => {
+    const { duration } = usePlayerStore.getState();
+    if (!duration) return;
+    const targetTime = duration * percent;
+    const { seek } = usePlayerStore.getState();
+    seek(targetTime);
+    resetControlsTimer();
+  }, [resetControlsTimer]);
+  seekToPercentRef.current = seekToPercent;
 
   const cycleDisplayMode = useCallback(() => {
     const modes = ['bilingual', 'ko', 'vi'] as const;
@@ -132,6 +151,18 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
       { key: 'f',     action: toggleFullscreenRef.current!, description: 'Toggle fullscreen' },
       { key: 'F',     action: toggleFullscreenRef.current!, description: 'Toggle fullscreen' },
       { key: 'Escape', action: () => { if (document.fullscreenElement) document.exitFullscreen(); }, description: 'Exit fullscreen' },
+
+      // 0-9: seek to 0%-90% of video duration
+      { key: '0', action: () => seekToPercentRef.current?.(0), description: 'Seek to 0%' },
+      { key: '1', action: () => seekToPercentRef.current?.(0.1), description: 'Seek to 10%' },
+      { key: '2', action: () => seekToPercentRef.current?.(0.2), description: 'Seek to 20%' },
+      { key: '3', action: () => seekToPercentRef.current?.(0.3), description: 'Seek to 30%' },
+      { key: '4', action: () => seekToPercentRef.current?.(0.4), description: 'Seek to 40%' },
+      { key: '5', action: () => seekToPercentRef.current?.(0.5), description: 'Seek to 50%' },
+      { key: '6', action: () => seekToPercentRef.current?.(0.6), description: 'Seek to 60%' },
+      { key: '7', action: () => seekToPercentRef.current?.(0.7), description: 'Seek to 70%' },
+      { key: '8', action: () => seekToPercentRef.current?.(0.8), description: 'Seek to 80%' },
+      { key: '9', action: () => seekToPercentRef.current?.(0.9), description: 'Seek to 90%' },
 
       { key: '?', action: resetControlsTimerRef.current!, description: 'Show controls' },
     ];

@@ -1,19 +1,94 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  Avatar, Tag, Button, Spin, Descriptions, Tabs, Card,
-  Modal, InputNumber, Form, Select, message, notification,
+  Avatar, Tag, Button, Spin, Descriptions,
+  Modal, InputNumber, Form, Select,
+  Input, DatePicker, Upload, Divider, Tooltip, message,
 } from 'antd';
 import {
   ArrowLeftOutlined, StopOutlined, CheckCircleOutlined,
   UserOutlined, DollarOutlined, CheckCircleFilled,
+  EditOutlined, SaveOutlined, CameraOutlined, ReloadOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
+import type { GetProp, UploadFile, UploadProps } from 'antd';
+import { App } from 'antd';
 import dayjs from 'dayjs';
 import { adminService, coinService, type AdminUserDetail, type CoinPackage } from '@/lib/api-services';
 
+const C = {
+  purple: '#7C4DFF',
+  cyan: '#00e5ff',
+  green: '#22c55e',
+  amber: '#f59e0b',
+  red: '#ef4444',
+  border: 'rgba(255,255,255,0.1)',
+};
+
+function SectionCard({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <div
+      className="rounded-2xl border overflow-hidden"
+      style={{ background: '#151c2a', borderColor: C.border }}
+    >
+      {title && (
+        <div
+          className="px-5 py-3 font-bold text-sm text-white flex items-center gap-2"
+          style={{ borderBottom: `1px solid ${C.border}` }}
+        >
+          {title}
+        </div>
+      )}
+      <div className="p-5">{children}</div>
+    </div>
+  );
+}
+
+function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-2">
+      <span className="text-slate-500 text-sm shrink-0 w-40">{label}</span>
+      <span className="text-slate-200 text-sm text-right break-all">{value}</span>
+    </div>
+  );
+}
+
+function StatPill({ label, value, icon, color }: {
+  label: string; value: string | number; icon: React.ReactNode; color: string;
+}) {
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-3 rounded-xl border"
+      style={{ background: `${color}10`, borderColor: `${color}30` }}
+    >
+      <div
+        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+        style={{ background: `${color}20`, color }}
+      >
+        {icon}
+      </div>
+      <div>
+        <p className="text-white text-base font-black leading-none">{value}</p>
+        <p className="text-slate-400 text-xs mt-0.5">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+interface EditFormValues {
+  name: string;
+  avatar: string;
+  role: 'USER' | 'MODERATOR' | 'ADMIN';
+  coinBalance: number;
+  streak: number;
+  isNewUser: boolean;
+  lastActiveAt: dayjs.Dayjs | null;
+}
+
 export default function AdminUserDetailPage() {
+  const { message: antdMessage, notification: antdNotification } = App.useApp();
   const params = useParams();
   const router = useRouter();
   const [user, setUser] = useState<AdminUserDetail | null>(null);
@@ -23,17 +98,24 @@ export default function AdminUserDetailPage() {
   const [grantLoading, setGrantLoading] = useState(false);
   const [packages, setPackages] = useState<CoinPackage[]>([]);
   const [form] = Form.useForm();
+  const [editForm] = Form.useForm();
   const [selectedMode, setSelectedMode] = useState<'preset' | 'custom'>('preset');
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string>('');
+
   const fetchUser = () => {
     const id = params.id as string;
     adminService.getUser(id)
-      .then((r) => setUser(r.data.data))
+      .then((r) => {
+        const u = r.data.data;
+        setUser(u as AdminUserDetail);
+        setAvatarPreview(u.avatar || '');
+      })
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
-    fetchUser();
-  }, [params.id]);
+  useEffect(() => { fetchUser(); }, [params.id]);
 
   useEffect(() => {
     if (grantOpen) {
@@ -43,13 +125,77 @@ export default function AdminUserDetailPage() {
     }
   }, [grantOpen]);
 
+  // ── Edit modal ───────────────────────────────────────────────
+  const openEdit = () => {
+    if (!user) return;
+    editForm.setFieldsValue({
+      name: user.name || '',
+      avatar: user.avatar || '',
+      role: user.role as 'USER' | 'MODERATOR' | 'ADMIN',
+      coinBalance: user.coinBalance,
+      streak: user.streak,
+      isNewUser: user.isNewUser ?? false,
+      lastActiveAt: user.lastActiveAt ? dayjs(user.lastActiveAt) : null,
+    });
+    setAvatarPreview(user.avatar || '');
+    setEditOpen(true);
+  };
+
+  const handleAvatarFileChange: UploadProps['onChange'] = ({ fileList }) => {
+    if (fileList.length > 0 && fileList[0].originFileObj) {
+      const file = fileList[0].originFileObj;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string;
+        setAvatarPreview(dataUrl);
+        editForm.setFieldValue('avatar', dataUrl);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveEdit = async (values: EditFormValues) => {
+    setEditLoading(true);
+    try {
+      const res = await adminService.updateUser(params.id as string, {
+        name: values.name || undefined,
+        avatar: values.avatar || undefined,
+        role: values.role,
+        coinBalance: values.coinBalance,
+        streak: values.streak,
+        isNewUser: values.isNewUser,
+        lastActiveAt: values.lastActiveAt ? values.lastActiveAt.toISOString() : null,
+      });
+      setUser((u) => u ? { ...u, ...res.data.data } : u);
+      setEditOpen(false);
+      antdNotification.success({
+        message: 'Cập nhật thành công',
+        description: 'Thông tin người dùng đã được lưu.',
+        icon: <CheckCircleFilled style={{ color: C.green }} />,
+        placement: 'topRight',
+        duration: 4,
+        style: { background: '#1a2a3a', border: `1px solid ${C.green}`, borderRadius: 12 },
+      });
+      antdMessage.success('Cập nhật thông tin người dùng thành công!');
+    } catch (err: unknown) {
+      const e = err as Record<string, unknown>;
+      const resp = (e?.response as Record<string, unknown>) ?? {};
+      const data = (resp?.data as Record<string, unknown>) ?? {};
+      const error = (data?.error as Record<string, unknown>) ?? {};
+      antdMessage.error((error?.message as string) || 'Lỗi khi cập nhật');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // ── Ban / Unban ──────────────────────────────────────────────
   const handleBan = async () => {
     setActionLoading(true);
     try {
       await adminService.banUser(params.id as string);
       setUser((u) => u ? { ...u, isBanned: true } : u);
-      message.success('Đã ban user');
-    } catch { message.error('Lỗi'); }
+      antdMessage.success('Đã cấm người dùng');
+    } catch { antdMessage.error('Lỗi cấm người dùng'); }
     finally { setActionLoading(false); }
   };
 
@@ -58,271 +204,305 @@ export default function AdminUserDetailPage() {
     try {
       await adminService.unbanUser(params.id as string);
       setUser((u) => u ? { ...u, isBanned: false } : u);
-      message.success('Đã unban user');
-    } catch { message.error('Lỗi'); }
+      antdMessage.success('Đã mở cấm người dùng');
+    } catch { antdMessage.error('Lỗi mở cấm người dùng'); }
     finally { setActionLoading(false); }
   };
 
+  // ── Grant coins ──────────────────────────────────────────────
   const handleGrantCoins = async (values: { preset?: number; amount?: number; reason?: string }) => {
     const finalAmount = values.amount ?? values.preset;
-    if (!finalAmount || finalAmount <= 0) {
-      message.error('Vui lòng chọn hoặc nhập số xu');
-      return;
-    }
+    if (!finalAmount || finalAmount <= 0) { antdMessage.error('Vui lòng chọn hoặc nhập số xu'); return; }
     setGrantLoading(true);
     try {
-      const result = await adminService.grantCoins(params.id as string, {
-        amount: finalAmount,
-        reason: values.reason,
-      });
-
+      const result = await adminService.grantCoins(params.id as string, { amount: finalAmount, reason: values.reason });
       setUser((u) => u ? { ...u, coinBalance: result.data.data.balance } : u);
       setGrantOpen(false);
       form.resetFields();
-
-      // Antd notification toast ben phai man hinh
-      notification.success({
+      antdNotification.success({
         message: 'Cấp xu thành công',
         description: (
-          <span>
-            Đã cấp <strong>{finalAmount.toLocaleString()} xu</strong> cho{' '}
-            <strong>{user?.name || user?.email}</strong>.
-            {values.reason && <> Lý do: <em>{values.reason}</em>.</>}
-          </span>
+          <span>Đã cấp <strong>{finalAmount.toLocaleString()} xu</strong> cho <strong>{user?.name || user?.email}</strong>.</span>
         ),
-        icon: <CheckCircleFilled className="text-green-400" />,
-        placement: 'topRight',
-        duration: 5,
-        style: {
-          backgroundColor: '#1a2a3a',
-          border: '1px solid #22c55e',
-          borderRadius: 12,
-        },
-        className: '!text-white',
+        icon: <CheckCircleFilled style={{ color: C.green }} />,
+        placement: 'topRight', duration: 5,
+        style: { background: '#1a2a3a', border: `1px solid ${C.green}`, borderRadius: 12 },
       });
-
-      message.success(`Đã cấp ${finalAmount.toLocaleString()} xu cho người dùng`);
     } catch (err: unknown) {
       const e = err as Record<string, unknown>;
-      const resp = e?.response as Record<string, unknown> | undefined;
-      const data = resp?.data as Record<string, unknown> | undefined;
-      const error = data?.error as Record<string, unknown> | undefined;
-      message.error((error?.message as string) || 'Lỗi khi cấp xu');
-    } finally {
-      setGrantLoading(false);
-    }
+      const resp = (e?.response as Record<string, unknown>) ?? {};
+      const data = (resp?.data as Record<string, unknown>) ?? {};
+      const error = (data?.error as Record<string, unknown>) ?? {};
+      antdMessage.error((error?.message as string) || 'Lỗi khi cấp xu');
+    } finally { setGrantLoading(false); }
   };
 
   if (loading) return (
-    <div className="flex items-center justify-center h-screen bg-[#0B0B0F]">
+    <div className="flex items-center justify-center h-screen" style={{ background: '#0B0B0F' }}>
       <Spin size="large" />
     </div>
   );
-  if (!user) return <div className="p-8 text-white">Không tìm thấy user</div>;
+
+  if (!user) return <div className="p-8 text-white">Không tìm thấy người dùng</div>;
+
+  const roleColor: Record<string, string> = { ADMIN: 'red', MODERATOR: 'orange', USER: 'default' };
+  const roleLabel: Record<string, string> = { ADMIN: 'Admin', MODERATOR: 'Moderator', USER: 'Người dùng' };
 
   return (
-    <div className="min-h-screen bg-[#0B0B0F] p-6">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <Button onClick={() => router.back()} className="!rounded-xl">
-          <ArrowLeftOutlined /> Quay lại
-        </Button>
-        <h1 className="text-2xl font-bold text-white">Chi tiết User</h1>
-        <Tag color={user.isBanned ? 'red' : 'green'}>
-          {user.isBanned ? 'Banned' : 'Active'}
-        </Tag>
-      </div>
+    <div className="min-h-screen p-6 space-y-5" style={{ background: '#0B0B0F' }}>
 
-      {/* Profile Card */}
-      <Card className="!bg-[#151c2a] !border-white/10 mb-6">
-        <div className="flex items-center gap-6">
-          <Avatar size={80} src={user.avatar} icon={<UserOutlined />} className="!bg-primary/20 !text-primary !text-2xl" />
-          <div className="flex-1">
-            <h2 className="text-xl font-bold text-white">{user.name || '—'}</h2>
-            <p className="text-slate-400">{user.role}</p>
-            <p className="text-slate-500 text-sm">{user.email}</p>
-            <div className="flex gap-6 mt-3">
-              <span className="text-sm text-slate-400">
-                Coins: <span className="text-primary font-bold">{user.coinBalance.toLocaleString()}</span>
-              </span>
-              <span className="text-sm text-slate-400">
-                Streak: <span className="text-primary font-bold">{user.streak} ngày</span>
-              </span>
-              <span className="text-sm text-slate-400">
-                Flashcards: <span className="text-primary font-bold">{user._count.flashcards}</span>
-              </span>
-              <span className="text-sm text-slate-400">
-                Quizzes: <span className="text-primary font-bold">{user._count.quizzes}</span>
-              </span>
-            </div>
-            <p className="text-slate-500 text-sm mt-2">
-              Tham gia {dayjs(user.createdAt).format('DD/MM/YYYY')}
-            </p>
+      {/* ── Header ─────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={() => router.back()}
+            className="!rounded-xl !bg-white/5 !border-white/10 !text-slate-300 hover:!bg-white/10 hover:!text-white"
+          >
+            <ArrowLeftOutlined /> Quay lại
+          </Button>
+          <div>
+            <h1 className="text-xl font-black text-white">Chi tiết người dùng</h1>
+            <p className="text-slate-500 text-xs mt-0.5">Quản lý thông tin tài khoản</p>
           </div>
         </div>
+        <Button
+          icon={<InfoCircleOutlined />}
+          onClick={openEdit}
+          className="!rounded-xl !font-semibold !bg-[rgba(124,77,255,0.15)] !border-[rgba(124,77,255,0.3)] !text-[#7C4DFF] hover:!bg-[rgba(124,77,255,0.25)]"
+        >
+          Chi tiết
+        </Button>
+      </div>
 
-        <div className="mt-6 flex gap-3 flex-wrap">
-          {user.isBanned ? (
-            <Button
-              type="primary"
-              onClick={handleUnban}
-              loading={actionLoading}
-              className="!rounded-xl !font-bold !bg-green-500 !border-green-500"
-            >
-              <CheckCircleOutlined /> Unban
-            </Button>
-          ) : (
-            <Button danger onClick={handleBan} loading={actionLoading} className="!rounded-xl">
-              <StopOutlined /> Ban User
-            </Button>
-          )}
-          <Button
-            type="default"
-            onClick={() => setGrantOpen(true)}
-            className="!rounded-xl !border-primary !text-primary hover:!bg-primary/10"
+      {/* ── Top Row: Profile + Stats ───────────────────────── */}
+      <div className="grid gap-5" style={{ gridTemplateColumns: '380px 1fr' }}>
+
+        {/* Profile card */}
+        <SectionCard>
+          <div className="flex flex-col items-center gap-4">
+
+            {/* Avatar */}
+            <div className="relative">
+              <Avatar
+                size={96}
+                src={user.avatar}
+                icon={<UserOutlined />}
+                className="!bg-[rgba(124,77,255,0.2)] !text-[#7C4DFF] !text-4xl"
+              />
+              <div
+                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-[#151c2a]"
+                style={{ background: user.isBanned ? C.red : C.green }}
+              />
+            </div>
+
+            <div className="text-center">
+              <h2 className="text-lg font-black text-white">{user.name || '—'}</h2>
+              <p className="text-slate-400 text-sm">{user.email}</p>
+              <div className="flex items-center justify-center gap-2 mt-2">
+                <Tag color={roleColor[user.role] || 'default'} className="!rounded-full !font-semibold">
+                  {roleLabel[user.role] || user.role}
+                </Tag>
+                {user.isBanned && (
+                  <Tag color="red" className="!rounded-full">Bị cấm</Tag>
+                )}
+              </div>
+            </div>
+
+            <Divider className="!my-0" style={{ borderColor: C.border }} />
+
+            <div className="w-full space-y-1">
+              <FieldRow label="Provider" value={(user as any).provider || 'EMAIL'} />
+              <FieldRow label="Tham gia" value={dayjs(user.createdAt).format('DD/MM/YYYY')} />
+              <FieldRow
+                label="Hoạt động cuối"
+                value={user.lastActiveAt ? dayjs(user.lastActiveAt).format('DD/MM/YYYY HH:mm') : '—'}
+              />
+              {(user as any).banReason && (
+                <FieldRow
+                  label="Lý do cấm"
+                  value={<span className="text-red-400">{(user as any).banReason}</span>}
+                />
+              )}
+            </div>
+
+            <Divider className="!my-0" style={{ borderColor: C.border }} />
+
+            {/* Action buttons */}
+            <div className="w-full space-y-2">
+              {user.isBanned ? (
+                <Button
+                  type="primary"
+                  block
+                  loading={actionLoading}
+                  onClick={handleUnban}
+                  icon={<CheckCircleOutlined />}
+                  className="!rounded-xl !font-semibold !bg-green-500 !border-green-500 hover:!bg-green-600"
+                >
+                  Mở cấm người dùng
+                </Button>
+              ) : (
+                <Button
+                  danger
+                  block
+                  loading={actionLoading}
+                  onClick={handleBan}
+                  icon={<StopOutlined />}
+                  className="!rounded-xl !font-semibold"
+                >
+                  Cấm người dùng
+                </Button>
+              )}
+              <Button
+                block
+                onClick={() => setGrantOpen(true)}
+                icon={<DollarOutlined />}
+                className="!rounded-xl !border-[rgba(245,158,11,0.3)] !text-[#f59e0b] hover:!bg-[rgba(245,158,11,0.1)]"
+              >
+                Cấp xu
+              </Button>
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* Stats */}
+        <SectionCard>
+          <p className="text-white font-bold text-sm mb-4">Thống kê</p>
+          <div className="grid grid-cols-2 gap-3">
+            <StatPill
+              label="Số dư xu"
+              value={user.coinBalance.toLocaleString('vi-VN')}
+              icon={<DollarOutlined />}
+              color={C.amber}
+            />
+            <StatPill
+              label="Chuỗi học tập"
+              value={`${user.streak} ngày`}
+              icon={<UserOutlined />}
+              color={C.green}
+            />
+            <StatPill
+              label="Flashcards"
+              value={user._count.flashcards}
+              icon={<span className="text-sm">📇</span>}
+              color={C.cyan}
+            />
+            <StatPill
+              label="Quizzes"
+              value={user._count.quizzes}
+              icon={<span className="text-sm">📝</span>}
+              color={C.purple}
+            />
+            <StatPill
+              label="Videos đã xem"
+              value={user._count.watchProgress}
+              icon={<span className="text-sm">🎬</span>}
+              color={C.purple}
+            />
+            <StatPill
+              label="Thanh toán"
+              value={user._count.payments}
+              icon={<DollarOutlined />}
+              color={C.green}
+            />
+          </div>
+
+          <Divider className="!my-4" style={{ borderColor: C.border }} />
+
+          <Descriptions
+            column={2}
+            size="small"
+            className="[&_.ant-descriptions-item-label]:!text-slate-500 [&_.ant-descriptions-item-content]:!text-slate-200 [&_.ant-descriptions-item]:!py-1.5"
           >
-            <DollarOutlined /> Cấp xu
-          </Button>
-        </div>
-      </Card>
+            <Descriptions.Item label="ID"><span className="text-xs font-mono text-slate-400">{user.id.slice(0, 8)}…</span></Descriptions.Item>
+            <Descriptions.Item label="Email">{user.email}</Descriptions.Item>
+            <Descriptions.Item label="Name">{user.name || '—'}</Descriptions.Item>
+            <Descriptions.Item label="Role"><Tag color={roleColor[user.role]} className="!rounded-full">{user.role}</Tag></Descriptions.Item>
+            <Descriptions.Item label="Created">{dayjs(user.createdAt).format('DD/MM/YYYY HH:mm')}</Descriptions.Item>
+            <Descriptions.Item label="Last Active">
+              {user.lastActiveAt ? dayjs(user.lastActiveAt).format('DD/MM/YYYY HH:mm') : '—'}
+            </Descriptions.Item>
+          </Descriptions>
+        </SectionCard>
+      </div>
 
-      {/* Tabs */}
-      <Card className="!bg-[#151c2a] !border-white/10">
-        <Tabs
-          defaultActiveKey="info"
-          items={[
-            {
-              key: 'info',
-              label: 'Thông tin',
-              children: (
-                <Descriptions column={2} className="[&_.ant-descriptions-item-label]:!text-slate-400 [&_.ant-descriptions-item-content]:!text-white">
-                  <Descriptions.Item label="ID">{user.id}</Descriptions.Item>
-                  <Descriptions.Item label="Email">{user.email}</Descriptions.Item>
-                  <Descriptions.Item label="Name">{user.name || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Role">{user.role}</Descriptions.Item>
-                  <Descriptions.Item label="Created">{dayjs(user.createdAt).format('DD/MM/YYYY HH:mm')}</Descriptions.Item>
-                  <Descriptions.Item label="Last Active">
-                    {user.lastActiveAt ? dayjs(user.lastActiveAt).format('DD/MM/YYYY HH:mm') : '—'}
-                  </Descriptions.Item>
-                </Descriptions>
-              ),
-            },
-            {
-              key: 'stats',
-              label: 'Thống kê',
-              children: (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {[
-                    { label: 'Flashcards', value: user._count.flashcards },
-                    { label: 'Quizzes', value: user._count.quizzes },
-                    { label: 'Videos Watched', value: user._count.watchProgress },
-                    { label: 'Payments', value: user._count.payments },
-                  ].map((item) => (
-                    <Card key={item.label} className="!bg-white/5 !border-white/10">
-                      <div className="text-2xl font-black text-primary">{item.value}</div>
-                      <div className="text-xs text-slate-400 mt-1">{item.label}</div>
-                    </Card>
-                  ))}
-                </div>
-              ),
-            },
-          ]}
-        />
-      </Card>
-
-      {/* Grant Coins Modal */}
+      {/* ── Grant Coins Modal ───────────────────────────────── */}
       <Modal
         title={
-          <span className="text-white">
-            <DollarOutlined className="mr-2 text-primary" />
+          <span className="flex items-center gap-2 text-white font-bold">
+            <DollarOutlined style={{ color: C.amber }} />
             Cấp xu cho người dùng
           </span>
         }
         open={grantOpen}
         onCancel={() => { setGrantOpen(false); form.resetFields(); }}
         footer={null}
-        className="[&_.ant-modal-content]:!bg-[#151c2a] [&_.ant-modal-header]:!bg-[#151c2a]"
+        className="[&_.ant-modal-content]:!bg-[#151c2a] [&_.ant-modal-header]:!bg-[#151c2a] [&_.ant-modal-title]:!text-white"
         destroyOnClose
       >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleGrantCoins}
-          className="mt-4"
-        >
-          {/* Preset package options */}
+        <Form form={form} layout="vertical" onFinish={handleGrantCoins} className="mt-4">
           {packages.length > 0 ? (
             <>
-              <Form.Item name="preset" label={<span className="text-slate-400">Số xu</span>}>
+              <Form.Item name="preset" label={<span className="text-slate-400 text-xs">Số xu</span>}>
                 <Select
                   placeholder="-- Chọn gói xu --"
                   className="!w-full"
+                  popupClassName="kmate-dark-select"
                   options={packages.map((pkg) => ({
                     label: (
-                      <span className="flex justify-between w-full">
-                        <span className="text-white font-medium">{pkg.name}</span>
-                        <span className="text-primary font-bold">{pkg.coinAmount.toLocaleString()} xu</span>
+                      <span className="flex justify-between w-full items-center">
+                        <span className="text-white text-sm font-medium">{pkg.name}</span>
+                        <span className="text-[#7C4DFF] font-bold">{pkg.coinAmount.toLocaleString()} xu</span>
                       </span>
                     ),
                     value: pkg.coinAmount,
                   }))}
                 />
               </Form.Item>
-
               <div className="flex gap-3 mb-4">
-                <Button
-                  type={selectedMode === 'preset' ? 'primary' : 'default'}
-                  onClick={() => { setSelectedMode('preset'); form.setFieldsValue({ amount: undefined }); }}
-                  className={selectedMode !== 'preset' ? '!border-primary !text-primary' : '!bg-primary !border-primary'}
-                >
-                  Chọn gói
-                </Button>
-                <Button
-                  type={selectedMode === 'custom' ? 'primary' : 'default'}
-                  onClick={() => { setSelectedMode('custom'); form.setFieldsValue({ preset: undefined }); }}
-                  className={selectedMode !== 'custom' ? '!border-primary !text-primary' : '!bg-primary !border-primary'}
-                >
-                  Nhập số khác
-                </Button>
+                {(['preset', 'custom'] as const).map((m) => (
+                  <Button
+                    key={m}
+                    type={selectedMode === m ? 'primary' : 'default'}
+                    onClick={() => {
+                      setSelectedMode(m);
+                      form.setFieldsValue(m === 'preset' ? { amount: undefined } : { preset: undefined });
+                    }}
+                    className={selectedMode !== m ? '!border-[rgba(124,77,255,0.3)] !text-[#7C4DFF]' : '!bg-[#7C4DFF] !border-[#7C4DFF]'}
+                  >
+                    {m === 'preset' ? 'Chọn gói' : 'Nhập số khác'}
+                  </Button>
+                ))}
               </div>
-
               {selectedMode === 'custom' && (
-                <Form.Item
-                  name="amount"
-                  label={<span className="text-slate-400">Số xu tùy chỉnh</span>}
-                >
+                <Form.Item name="amount" label={<span className="text-slate-400 text-xs">Số xu tùy chỉnh</span>}>
                   <InputNumber
                     placeholder="Nhập số xu muốn cấp"
                     min={1}
                     className="!w-full !bg-white/5 !border-white/10 !text-white"
-                    formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                    parser={(value) => Number(String(value).replace(/,/g, '')) as any}
+                    formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                    parser={(v) => String(v).replace(/,/g, '') as unknown as 1}
                   />
                 </Form.Item>
               )}
             </>
           ) : (
-            <Form.Item
-              name="amount"
-              label={<span className="text-slate-400">Số xu</span>}
-              rules={[{ required: true, message: 'Nhập số xu cần cấp' }]}
-            >
+            <Form.Item name="amount" label={<span className="text-slate-400 text-xs">Số xu</span>} rules={[{ required: true, message: 'Nhập số xu cần cấp' }]}>
               <InputNumber
                 placeholder="Nhập số xu muốn cấp"
                 min={1}
                 className="!w-full !bg-white/5 !border-white/10 !text-white"
-                formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                parser={(value) => Number(String(value).replace(/,/g, '')) as any}
+                formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                parser={(v) => String(v).replace(/,/g, '') as unknown as 1}
               />
             </Form.Item>
           )}
 
-          {/* Reason */}
-          <Form.Item name="reason" label={<span className="text-slate-400">Lý do (tùy chọn)</span>}>
+          <Form.Item name="reason" label={<span className="text-slate-400 text-xs">Lý do (tùy chọn)</span>}>
             <Select
               placeholder="Chọn lý do"
               allowClear
               className="!w-full"
+              popupClassName="kmate-dark-select"
               options={[
                 { label: 'Thưởng tháng', value: 'Thưởng tháng' },
                 { label: 'Thưởng tuần', value: 'Thưởng tuần' },
@@ -334,16 +514,193 @@ export default function AdminUserDetailPage() {
           </Form.Item>
 
           <div className="flex gap-3 justify-end mt-6">
-            <Button onClick={() => { setGrantOpen(false); form.resetFields(); }}>
+            <Button onClick={() => { setGrantOpen(false); form.resetFields(); }} className="!rounded-xl">
               Hủy
             </Button>
             <Button
               type="primary"
               htmlType="submit"
               loading={grantLoading}
-              className="!rounded-xl !bg-primary !border-primary"
+              icon={<DollarOutlined />}
+              className="!rounded-xl !bg-[#7C4DFF] !border-[#7C4DFF] hover:!bg-[rgba(124,77,255,0.8)]"
             >
-              <DollarOutlined /> Xác nhận cấp xu
+              Xác nhận cấp xu
+            </Button>
+          </div>
+        </Form>
+      </Modal>
+
+      {/* ── Edit User Modal ─────────────────────────────────── */}
+      <Modal
+        title={
+          <span className="flex items-center gap-2 text-white font-bold">
+            <EditOutlined style={{ color: C.purple }} />
+            Chỉnh sửa người dùng
+          </span>
+        }
+        open={editOpen}
+        onCancel={() => setEditOpen(false)}
+        footer={null}
+        width={700}
+        className="[&_.ant-modal-content]:!bg-[#151c2a] [&_.ant-modal-header]:!bg-[#151c2a] [&_.ant-modal-title]:!text-white"
+        destroyOnClose
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={handleSaveEdit}
+          className="mt-4"
+        >
+          {/* Avatar upload */}
+          <div className="flex gap-6 items-start mb-6 p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}` }}>
+            <div className="flex flex-col items-center gap-2 shrink-0">
+              <div className="relative group cursor-pointer" onClick={() => document.getElementById('avatar-file-input')?.click()}>
+                <Avatar
+                  size={80}
+                  src={avatarPreview}
+                  icon={<UserOutlined />}
+                  className="!bg-[rgba(124,77,255,0.2)] !text-[#7C4DFF] !text-2xl border-2 border-[rgba(124,77,255,0.3)]"
+                />
+                <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <CameraOutlined className="text-white" />
+                </div>
+              </div>
+              <p className="text-slate-500 text-xs text-center">Click để upload</p>
+              <input
+                id="avatar-file-input"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    const dataUrl = ev.target?.result as string;
+                    setAvatarPreview(dataUrl);
+                    editForm.setFieldValue('avatar', dataUrl);
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-sm font-semibold mb-1">Ảnh đại diện</p>
+              <p className="text-slate-500 text-xs mb-3">Upload file ảnh hoặc dán URL bên dưới</p>
+              <Form.Item name="avatar" noStyle>
+                <Input
+                  placeholder="Dán URL avatar (https://...)"
+                  className="!rounded-lg !bg-white/5 !border-white/10 !text-sm !text-white placeholder:!text-slate-600"
+                  prefix={<CameraOutlined className="text-slate-500" />}
+                  allowClear
+                  onChange={(e) => setAvatarPreview(e.target.value)}
+                />
+              </Form.Item>
+            </div>
+          </div>
+
+          {/* Form fields — 2 columns */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+
+            <Form.Item
+              name="name"
+              label={<span className="text-slate-400 text-xs">Tên hiển thị</span>}
+            >
+              <Input
+                placeholder="Nhập tên người dùng"
+                className="!rounded-lg !bg-white/5 !border-white/10 !text-sm !text-white placeholder:!text-slate-600"
+                prefix={<UserOutlined className="text-slate-500" />}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="role"
+              label={<span className="text-slate-400 text-xs">Vai trò</span>}
+              rules={[{ required: true, message: 'Vui lòng chọn vai trò' }]}
+            >
+              <Select
+                placeholder="Chọn vai trò"
+                className="!w-full"
+                popupClassName="kmate-dark-select"
+                options={[
+                  { label: <span className="text-slate-300 text-sm">USER — Người dùng</span>, value: 'USER' },
+                  { label: <span className="text-slate-300 text-sm">MODERATOR — Kiểm duyệt</span>, value: 'MODERATOR' },
+                  { label: <span className="text-slate-300 text-sm">ADMIN — Quản trị</span>, value: 'ADMIN' },
+                ]}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="coinBalance"
+              label={<span className="text-slate-400 text-xs">Số dư xu</span>}
+              rules={[{ required: true, message: 'Vui lòng nhập số dư xu' }]}
+            >
+              <InputNumber
+                placeholder="0"
+                min={0}
+                className="!w-full !rounded-lg !bg-white/5 !border-white/10 !text-sm !text-white [&_.ant-input-number-input-wrap]:!text-white"
+                prefix={<span className="text-slate-500 text-sm">💰</span>}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="streak"
+              label={<span className="text-slate-400 text-xs">Chuỗi học tập (ngày)</span>}
+              rules={[{ required: true, message: 'Vui lòng nhập chuỗi học tập' }]}
+            >
+              <InputNumber
+                placeholder="0"
+                min={0}
+                className="!w-full !rounded-lg !bg-white/5 !border-white/10 !text-sm !text-white"
+                prefix={<span className="text-slate-500 text-sm">🔥</span>}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="lastActiveAt"
+              label={<span className="text-slate-400 text-xs">Hoạt động cuối</span>}
+            >
+              <DatePicker
+                showTime
+                format="DD/MM/YYYY HH:mm"
+                placeholder="Chọn ngày giờ"
+                className="!w-full !rounded-lg [&_.ant-picker]:!bg-white/5 [&_.ant-picker]:!border-white/10 [&_.ant-picker-input>input]:!text-white [&_.ant-picker-suffix]:!text-slate-500"
+                popupClassName="kmate-dark-select"
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="isNewUser"
+              label={<span className="text-slate-400 text-xs">Người dùng mới</span>}
+            >
+              <Select
+                placeholder="Chọn"
+                className="!w-full"
+                popupClassName="kmate-dark-select"
+                options={[
+                  { label: <span className="text-slate-300 text-sm">Có — new user</span>, value: true },
+                  { label: <span className="text-slate-300 text-sm">Không — đã quen</span>, value: false },
+                ]}
+              />
+            </Form.Item>
+
+          </div>
+
+          <div className="flex gap-3 justify-end mt-6 pt-4" style={{ borderTop: `1px solid ${C.border}` }}>
+            <Button
+              onClick={() => setEditOpen(false)}
+              className="!rounded-lg !bg-white/5 !border-white/10 !text-slate-300 hover:!bg-white/10"
+            >
+              Hủy bỏ
+            </Button>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={editLoading}
+              icon={<SaveOutlined />}
+              className="!rounded-lg !bg-[#7C4DFF] !border-[#7C4DFF] hover:!bg-[rgba(124,77,255,0.8)] !font-semibold"
+            >
+              Lưu thay đổi
             </Button>
           </div>
         </Form>

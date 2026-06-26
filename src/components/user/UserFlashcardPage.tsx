@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Button, Spin, Modal } from "antd";
+import { Button, Spin, Modal, Select } from "antd";
 import { App } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -18,7 +18,6 @@ import {
 } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { flashcardService, type Flashcard, type FlashcardDeck, type FlashcardStats } from '@/lib/api-services';
-import { ConfirmModal } from '@/components/common/confirm-modal';
 import { useFlashcardStore } from '@/store/flashcard.store';
 import { CreateFromVideoView } from './CreateFromVideoView';
 import { DueCardsView } from './DueCardsView';
@@ -184,7 +183,7 @@ function DeckCard({ deck, onStart }: { deck: FlashcardDeck; onStart: () => void 
 
   return (
     <div
-      className="user-glass-card p-6 flex flex-col gap-4 cursor-pointer transition-all duration-300"
+      className="user-glass-card p-6 flex flex-col gap-4 cursor-pointer transition-all duration-300 h-full"
       style={{
         borderColor: hovered ? color + '60' : 'rgba(255,255,255,0.1)',
         boxShadow: hovered ? `0 0 20px ${color}30` : 'none',
@@ -782,15 +781,17 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, 
               return (
                 <div key={deck.id} className="relative group">
                   <DeckCard deck={{ ...deck, color }} onStart={() => onSelectDeck(deck)} />
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onDeleteDeck(deck.id, deck.name); }}
-                    className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center
-                      bg-red-500/0 text-slate-500 hover:bg-red-500/20 hover:text-red-400
-                      transition-all opacity-0 group-hover:opacity-100"
-                    title="Xóa bộ thẻ"
-                  >
-                    <DeleteOutlined style={{ fontSize: 14 }} />
-                  </button>
+                  {!deck.isDefault && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDeleteDeck(deck.id, deck.name); }}
+                      className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center
+                        bg-red-500/0 text-slate-500 hover:bg-red-500/20 hover:text-red-400
+                        transition-all opacity-0 group-hover:opacity-100"
+                      title="Xóa bộ thẻ"
+                    >
+                      <DeleteOutlined style={{ fontSize: 14 }} />
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -815,17 +816,18 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, 
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <select
+              <Select
                 value={sortBy}
-                onChange={(e) => { setSortBy(e.target.value as SortOption); setPage(1); }}
-                className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary cursor-pointer"
-              >
-                <option value="newest">Mới nhất</option>
-                <option value="name_asc">Tên A→Z</option>
-                <option value="name_desc">Tên Z→A</option>
-                <option value="cards_desc">Nhiều thẻ nhất</option>
-                <option value="cards_asc">Ít thẻ nhất</option>
-              </select>
+                onChange={(value) => { setSortBy(value as SortOption); setPage(1); }}
+                className="min-w-[130px]"
+                options={[
+                  { value: 'newest', label: 'Mới nhất' },
+                  { value: 'name_asc', label: 'Tên A→Z' },
+                  { value: 'name_desc', label: 'Tên Z→A' },
+                  { value: 'cards_desc', label: 'Nhiều thẻ nhất' },
+                  { value: 'cards_asc', label: 'Ít thẻ nhất' },
+                ]}
+              />
               <div className="flex items-center rounded-lg border border-white/10 overflow-hidden">
                 <button
                   onClick={() => setViewMode('grid')}
@@ -854,15 +856,17 @@ function DeckListView({ defaultDecks, videoDecks, stats, loading, onSelectDeck, 
                 ) : (
                   <ListDeckRow deck={deck} onStart={() => onSelectDeck(deck as FlashcardDeck)} />
                 )}
-                <button
-                  onClick={(e) => { e.stopPropagation(); onDeleteDeck(deck.id, deck.name); }}
-                  className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center
-                    bg-red-500/0 text-slate-500 hover:bg-red-500/20 hover:text-red-400
-                    transition-all opacity-0 group-hover:opacity-100"
-                  title="Xóa bộ thẻ"
-                >
-                  <DeleteOutlined style={{ fontSize: 14 }} />
-                </button>
+                {!deck.isDefault && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDeleteDeck(deck.id, deck.name); }}
+                    className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center
+                      bg-red-500/0 text-slate-500 hover:bg-red-500/20 hover:text-red-400
+                      transition-all opacity-0 group-hover:opacity-100"
+                    title="Xóa bộ thẻ"
+                  >
+                    <DeleteOutlined style={{ fontSize: 14 }} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -999,6 +1003,9 @@ export default function UserFlashcardPage() {
   const [saveModalVisible, setSaveModalVisible] = useState(false);
   const [pendingExit, setPendingExit] = useState<{ hasProgress: boolean; answeredCount: number; currentIndex: number } | null>(null);
 
+  /** State for delete-deck confirmation */
+  const [deleteModal, setDeleteModal] = useState<{ id: string; name: string } | null>(null);
+
   const { session, setSession, clearSession } = useFlashcardStore();
 
   // Persists across renders within the same page lifetime.
@@ -1060,9 +1067,9 @@ export default function UserFlashcardPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const defaultDecks = decks.filter((d) => (d as any).isDefault === true);
+  const defaultDecks = decks.filter((d) => d.isDefault === true);
   const videoDecks = decks
-    .filter((d) => (d as any).isDefault !== true)
+    .filter((d) => d.isDefault !== true)
     .map((d) => d as FlashcardDeck & { youtubeId?: string; videoTitle?: string });
 
   const handleSelectDeck = async (deck: FlashcardDeck) => {
@@ -1366,6 +1373,53 @@ export default function UserFlashcardPage() {
         onCancel={() => setSaveModalVisible(false)}
       />
 
+      {/* Delete-deck confirmation */}
+      <Modal
+        title={
+          <span className="flex items-center gap-2 text-white">
+            <span className="text-red-400">⚠</span>
+            Xác nhận xóa
+          </span>
+        }
+        open={!!deleteModal}
+        onCancel={() => setDeleteModal(null)}
+        footer={[
+          <Button key="cancel" onClick={() => setDeleteModal(null)} className="!rounded-xl">
+            Hủy
+          </Button>,
+          <Button
+            key="delete"
+            danger
+            type="primary"
+            onClick={async () => {
+              if (!deleteModal) return;
+              try {
+                await flashcardService.deleteDeck(deleteModal.id);
+                message.success('Đã xóa bộ thẻ!');
+                const [decksRes, statsRes] = await Promise.all([
+                  flashcardService.getDecks(),
+                  flashcardService.getStats(),
+                ]);
+                setDecks(decksRes.data.data);
+                if (statsRes.data.data) setStats(statsRes.data.data);
+              } catch {
+                message.error('Không thể xóa bộ thẻ');
+              } finally {
+                setDeleteModal(null);
+              }
+            }}
+            className="!rounded-xl !font-bold"
+          >
+            Xóa
+          </Button>,
+        ]}
+        className="kmate-modal"
+      >
+        <p className="text-gray-300">
+          Bạn có muốn xóa bộ flashcard &quot;{deleteModal?.name}&quot;? Hành động này không thể hoàn tác.
+        </p>
+      </Modal>
+
       {activeCards !== null && activeCards.length > 0 ? (
         <ReviewMode
           cards={activeCards}
@@ -1431,28 +1485,7 @@ export default function UserFlashcardPage() {
                 onSelectDeck={handleSelectDeck}
                 hasInProgressSession={!!activeSession}
                 onResume={handleResumeSession}
-                onDeleteDeck={(id: string, name: string) => {
-                  ConfirmModal.confirm({
-                    title: 'Xác nhận xóa',
-                    message: `Bạn có muốn xóa bộ flashcard "${name}"?`,
-                    danger: true,
-                    confirmText: 'Xóa',
-                    onConfirm: async () => {
-                      try {
-                        await flashcardService.deleteDeck(id);
-                        message.success('Đã xóa bộ thẻ!');
-                        const [decksRes, statsRes] = await Promise.all([
-                          flashcardService.getDecks(),
-                          flashcardService.getStats(),
-                        ]);
-                        setDecks(decksRes.data.data);
-                        if (statsRes.data.data) setStats(statsRes.data.data);
-                      } catch {
-                        message.error('Không thể xóa bộ thẻ');
-                      }
-                    },
-                  });
-                }}
+                onDeleteDeck={(id: string, name: string) => setDeleteModal({ id, name })}
               />
             )
           )}

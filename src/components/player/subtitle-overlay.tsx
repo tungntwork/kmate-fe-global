@@ -17,7 +17,8 @@ function isEmptyText(text: string | null | undefined): boolean {
 export function SubtitleOverlay({ onWordClick }: SubtitleOverlayProps) {
   const {
     settings,
-    pause,
+    pauseByHover,
+    resumeFromHover,
   } = usePlayerStore();
 
   const {
@@ -55,14 +56,10 @@ export function SubtitleOverlay({ onWordClick }: SubtitleOverlayProps) {
 
   const subtitleContent = (
     <div
-      className="max-w-4xl w-full text-center pointer-events-auto bg-[#cccccc20] backdrop-blur-sm px-6 py-3 rounded-xl"
+      className="max-w-4xl w-full text-center pointer-events-auto bg-[#cccccc20] backdrop-blur-sm px-3 py-2 rounded-lg"
       style={{ opacity: subtitleOpacity }}
-      onMouseEnter={() => pause()}
-      onMouseLeave={() => pause()}
-      onClick={(e) => {
-        e.stopPropagation();
-        pause();
-      }}
+      onMouseEnter={() => pauseByHover()}
+      onMouseLeave={() => resumeFromHover()}
     >
       {settings.displayMode === 'bilingual' ? (
         <div className="space-y-1">

@@ -354,7 +354,7 @@ export default function ReportModal({ open, onClose, stats, achievements }: Repo
       title={null}
       centered
       className="report-modal"
-      bodyStyle={{ padding: 0, background: 'transparent' }}
+      styles={{ body: { padding: 0, background: 'transparent' } }}
     >
       <div className="bg-[#0B0B15] rounded-2xl overflow-hidden border border-white/10">
         {/* Header */}

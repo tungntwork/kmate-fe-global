@@ -3,6 +3,7 @@ import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { ConfigProvider, App } from 'antd';
 import { QueryProvider } from '@/lib/query-provider';
 import { SocketProvider } from '@/lib/socket-provider';
+import { SessionValidationProvider } from '@/components/providers/SessionValidationProvider';
 import Script from 'next/script';
 import '@/styles/globals.css';
 
@@ -37,9 +38,11 @@ export default function RootLayout({
           <ConfigProvider theme={theme}>
             <QueryProvider>
               <SocketProvider>
-                <App>
-                  {children}
-                </App>
+                <SessionValidationProvider>
+                  <App>
+                    {children}
+                  </App>
+                </SessionValidationProvider>
               </SocketProvider>
             </QueryProvider>
           </ConfigProvider>

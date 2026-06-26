@@ -49,6 +49,8 @@ interface PlayerState {
   hasError: boolean;
   errorMessage: string;
   isFullscreen: boolean;
+  /** Blocks play() calls — set to true while subtitle generation is in progress */
+  playBlocked: boolean;
   
   // Settings
   settings: PlaybackSettings;
@@ -66,6 +68,7 @@ interface PlayerActions {
   // Video actions
   setVideo: (video: VideoInfo | null) => void;
   setPlayerRef: (ref: unknown) => void;
+  setPlayBlocked: (blocked: boolean) => void;
 
   // Hover pause actions
   pauseByHover: () => void;
@@ -84,6 +87,7 @@ interface PlayerActions {
   setHasError: (error: boolean, message?: string) => void;
   setIsFullscreen: (fullscreen: boolean) => void;
   toggleFullscreen: () => void;
+  exitFullscreen: () => void;
   
   // Settings actions
   setSpeed: (speed: PlaybackSpeed) => void;
@@ -136,6 +140,7 @@ const initialState: PlayerState = {
   settingsPanelOpen: false,
   activeChapter: null,
   playerRef: null,
+  playBlocked: false,
 };
 
 export const usePlayerStore = create<PlayerState & PlayerActions>()(
@@ -145,6 +150,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
 
       setVideo: (video) => set({ video, hasError: false }),
       setPlayerRef: (ref) => set({ playerRef: ref }),
+      setPlayBlocked: (blocked) => set({ playBlocked: blocked }),
 
       pauseByHover: () => {
         const player = get().playerRef as globalThis.YT.Player | null;
@@ -172,6 +178,8 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
       },
 
       play: () => {
+        const { playBlocked } = get();
+        if (playBlocked) return;
         const player = get().playerRef as globalThis.YT.Player | null;
         if (!player) return;
         if (typeof player.playVideo === 'function') {
@@ -239,6 +247,11 @@ export const usePlayerStore = create<PlayerState & PlayerActions>()(
           container.requestFullscreen();
         }
         // Do NOT toggle optimistically — fullscreenchange event syncs the real state
+      },
+      exitFullscreen: () => {
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        }
       },
 
       setSpeed: (speed) => {

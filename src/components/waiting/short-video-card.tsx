@@ -59,7 +59,7 @@ export function ShortVideoCard({ short, index }: ShortVideoCardProps) {
     >
       <Card
         className="bg-dark-300 border-dark-200 rounded-xl overflow-hidden cursor-pointer transition-all duration-200 hover:border-sky-500/50 hover:shadow-lg hover:shadow-sky-500/10 group"
-        bodyStyle={{ padding: 0 }}
+        styles={{ body: { padding: 0 } }}
         onClick={handleClick}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}

@@ -62,34 +62,34 @@ export function useSubtitleSync(options: UseSubtitleSyncOptions = {}) {
     return { segment: result, index: resultIndex };
   }, [segments]);
 
-  // Throttle: only update store at most every 100ms to avoid cascading re-renders.
-  // We use segment ID comparison (not time-based throttle) to avoid lag when seeking.
-  // Uses real-time from player ref to stay accurate, not just the store (which is 100ms behind).
+  // Poll player time directly at 60ms intervals for per-millisecond subtitle accuracy,
+  // bypassing the store's rAF throttle (which updates at ~100ms intervals with 0.1s precision).
   useEffect(() => {
     if (!segments.length) return;
 
-    const player = playerRef as { getCurrentTime?: () => number } | null;
-    const realTime = player?.getCurrentTime?.() ?? currentTime;
-    const now = Date.now();
+    const intervalId = setInterval(() => {
+      const player = playerRef as { getCurrentTime?: () => number } | null;
+      const realTime = player?.getCurrentTime?.() ?? currentTime;
 
-    const { segment, index } = binarySearchSegment(realTime);
+      const { segment, index } = binarySearchSegment(realTime);
 
-    // Skip if segment ID hasn't changed — avoids unnecessary re-renders
-    const newId = segment?.id ?? null;
-    if (newId === lastSegmentIdRef.current && now - lastUpdateRef.current < 100) return;
+      const newId = segment?.id ?? null;
+      if (newId === lastSegmentIdRef.current) return;
 
-    lastSegmentIdRef.current = newId;
-    lastUpdateRef.current = now;
+      lastSegmentIdRef.current = newId;
 
-    if (segment !== currentSegment || index !== currentSegmentIndex) {
-      const { currentSegment: cur, currentSegmentIndex: idx } = useSubtitleStore.getState();
-      if (segment !== cur || index !== idx) {
-        useSubtitleStore.setState({
-          currentSegment: segment,
-          currentSegmentIndex: index,
-        });
+      if (segment !== currentSegment || index !== currentSegmentIndex) {
+        const { currentSegment: cur, currentSegmentIndex: idx } = useSubtitleStore.getState();
+        if (segment !== cur || index !== idx) {
+          useSubtitleStore.setState({
+            currentSegment: segment,
+            currentSegmentIndex: index,
+          });
+        }
       }
-    }
+    }, 60);
+
+    return () => clearInterval(intervalId);
   }, [currentTime, binarySearchSegment, currentSegment, currentSegmentIndex, segments, playerRef]);
 
   // Preload surrounding segments for smooth transitions

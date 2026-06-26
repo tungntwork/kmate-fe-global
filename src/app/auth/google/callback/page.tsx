@@ -3,9 +3,10 @@
 import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
-import { message } from 'antd';
+import { App } from 'antd';
 
 function GoogleCallbackInner() {
+  const { message: antdMessage } = App.useApp();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { setTokens, setUser } = useAuthStore.getState();
@@ -22,13 +23,13 @@ function GoogleCallbackInner() {
         google_auth_failed: 'Xác thực Google thất bại. Vui lòng thử lại.',
         disallowed_useragent: 'Trình duyệt không được hỗ trợ. Vui lòng sử dụng trình duyệt thông thường.',
       };
-      message.error(errorMessages[error] || 'Đăng nhập Google thất bại. Vui lòng thử lại.');
+      antdMessage.error(errorMessages[error] || 'Đăng nhập Google thất bại. Vui lòng thử lại.');
       router.replace('/login');
       return;
     }
 
     if (!accessToken || !refreshToken) {
-      message.error('Dữ liệu đăng nhập không hợp lệ.');
+      antdMessage.error('Dữ liệu đăng nhập không hợp lệ.');
       router.replace('/login');
       return;
     }
@@ -66,7 +67,7 @@ function GoogleCallbackInner() {
         router.replace(dashboardPath);
       })
       .catch(() => {
-        message.error('Không thể lấy thông tin tài khoản.');
+        antdMessage.error('Không thể lấy thông tin tài khoản.');
         router.replace('/login');
       });
   }, [router, searchParams, setTokens, setUser]);

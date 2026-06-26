@@ -135,6 +135,67 @@ export const adminService = {
   getUser: (id: string) =>
     api.get<{ data: AdminUserDetail }>(`/admin/users/${id}`),
 
+  importUsers: (file: File, skipDuplicates = true) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('skipDuplicates', String(skipDuplicates));
+    return api.post<{ data: { created: number; skipped: number; errors: string[] } }>(
+      '/admin/users/import',
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+  },
+
+  exportUsers: async (opts: { includeOAuth?: boolean; includeBanned?: boolean } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.includeOAuth) params.set('includeOAuth', 'true');
+    if (opts.includeBanned) params.set('includeBanned', 'true');
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const { apiClient } = await import('@/lib/api');
+    const res = await apiClient.get(`/admin/users/export${query}`, {
+      responseType: 'blob',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    const blob = new Blob([res.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const filename = `kmate-users-${date}.xlsx`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  downloadTemplate: async () => {
+    const { apiClient } = await import('@/lib/api');
+    const res = await apiClient.get('/admin/users/template', {
+      responseType: 'blob',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    const blob = new Blob([res.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'kmate-users-template.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  generateFakeUsers: (data: { count: number; method: 'random' | 'ai'; role?: string }) =>
+    api.post<{ data: { created: number; method: string; role: string } }>('/admin/users/fake', data),
+
+  getExportPreview: (params?: { includeOAuth?: boolean; includeBanned?: boolean }) =>
+    api.get<{ data: { headers: string[]; rows: Record<string, string>[] } }>('/admin/users/export-preview', { params }),
+
   banUser: (id: string, reason?: string) =>
     api.post(`/admin/users/${id}/ban`, { reason }),
 
@@ -146,6 +207,21 @@ export const adminService = {
       `/admin/users/${id}/grant-coins`,
       data,
     ),
+
+  updateUser: (
+    id: string,
+    data: {
+      name?: string;
+      avatar?: string;
+      role?: 'USER' | 'MODERATOR' | 'ADMIN';
+      coinBalance?: number;
+      streak?: number;
+      isBanned?: boolean;
+      isNewUser?: boolean;
+      lastActiveAt?: string | null;
+    },
+  ) =>
+    api.put<{ data: AdminUserDetail }>(`/admin/users/${id}`, data),
 
   getTransactions: (params?: { page?: number; limit?: number }) =>
     api.get<{ data: AdminTransaction[]; pagination: Pagination }>('/admin/transactions', { params }),
@@ -248,6 +324,7 @@ export interface CoinBalance {
   balance: number;
   lifetimeEarnings: number;
   lifetimeSpent: number;
+  hasClaimedToday?: boolean;
 }
 
 export interface CoinTransaction {
@@ -441,6 +518,9 @@ export interface AdminUser {
 }
 
 export interface AdminUserDetail extends AdminUser {
+  banReason: string | null;
+  isNewUser: boolean;
+  provider: string;
   preferences: Record<string, unknown>;
   _count: {
     flashcards: number;
@@ -618,7 +698,7 @@ export const videoService = {
   getProgress: (id: string) =>
     api.get<{ data: unknown }>(`/videos/${id}/progress`),
 
-  updateProgress: (id: string, data: { currentTime: number; duration: number }) =>
+  updateProgress: (id: string, data: { currentTime: number; duration: number; status?: string }) =>
     api.put(`/videos/${id}/progress`, data),
 
   getWatchedVideos: (params?: { page?: number; limit?: number }) =>
@@ -634,13 +714,53 @@ export const videoService = {
           status: string;
           lastWatchedAt: string;
           watchCount: number;
+          cumulativeWatchTime: number;
         }[];
         total: number;
         page: number;
         limit: number;
       };
     }>('/videos/watched', { params }),
+
+  getCoinUnlockedVideos: (params?: { page?: number; limit?: number }) =>
+    api.get<{
+      data: {
+        videos: CoinUnlockedVideo[];
+        total: number;
+        page: number;
+        limit: number;
+      };
+    }>('/videos/coin-unlocked', { params }),
+
+  toggleFavorite: (videoId: string) =>
+    api.post<{ data: { isBookmarked: boolean; videoId: string } }>(`/videos/${videoId}/favorite`),
+
+  getFavorites: (params?: { page?: number; limit?: number }) =>
+    api.get<{
+      data: {
+        videos: CoinUnlockedVideo[];
+        total: number;
+        page: number;
+        limit: number;
+      };
+    }>('/videos/favorites', { params }),
 };
+
+export interface CoinUnlockedVideo {
+  videoId: string;
+  youtubeId: string;
+  title: string;
+  thumbnailUrl: string;
+  duration: number;
+  channelTitle: string;
+  coinCost: number;
+  unlockedAt: string;
+  isBookmarked: boolean;
+  progress: number;
+  status: string;
+  lastWatchedAt: string | null;
+  cumulativeWatchTime: number;
+}
 
 // ============================================================
 // SHORTS
@@ -699,6 +819,7 @@ export interface FlashcardDeck {
   cardCount: number;
   dueCount: number;
   color: string;
+  isDefault?: boolean;
   createdAt: string;
 }
 

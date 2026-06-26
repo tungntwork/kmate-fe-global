@@ -68,7 +68,12 @@ export default function UserWalletPage() {
   const loadBalance = async () => {
     try {
       const res = await coinService.getBalance();
-      setBalance(res.data.data);
+      const data = res.data.data;
+      setBalance(data);
+      // Initialize dailyClaimed from backend on first load
+      if (data.hasClaimedToday && !dailyClaimed) {
+        setDailyClaimed(true);
+      }
     } catch {
       // silent
     }
