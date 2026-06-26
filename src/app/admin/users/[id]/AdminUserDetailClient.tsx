@@ -11,7 +11,7 @@ import {
   ArrowLeftOutlined, StopOutlined, CheckCircleOutlined,
   UserOutlined, DollarOutlined, CheckCircleFilled,
   EditOutlined, SaveOutlined, CameraOutlined, ReloadOutlined,
-  InfoCircleOutlined,
+  InfoCircleOutlined, MailOutlined,
 } from '@ant-design/icons';
 import type { GetProp, UploadFile, UploadProps } from 'antd';
 import { App } from 'antd';
@@ -78,6 +78,7 @@ function StatPill({ label, value, icon, color }: {
 }
 
 interface EditFormValues {
+  email: string;
   name: string;
   avatar: string;
   role: 'USER' | 'MODERATOR' | 'ADMIN';
@@ -129,6 +130,7 @@ export default function AdminUserDetailPage() {
   const openEdit = () => {
     if (!user) return;
     editForm.setFieldsValue({
+      email: user.email || '',
       name: user.name || '',
       avatar: user.avatar || '',
       role: user.role as 'USER' | 'MODERATOR' | 'ADMIN',
@@ -158,6 +160,7 @@ export default function AdminUserDetailPage() {
     setEditLoading(true);
     try {
       const res = await adminService.updateUser(params.id as string, {
+        email: values.email || undefined,
         name: values.name || undefined,
         avatar: values.avatar || undefined,
         role: values.role,
@@ -601,6 +604,22 @@ export default function AdminUserDetailPage() {
 
           {/* Form fields — 2 columns */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+
+            <Form.Item
+              name="email"
+              label={<span className="text-slate-400 text-xs">Email</span>}
+              className="col-span-2"
+              rules={[
+                { required: true, message: 'Vui lòng nhập email' },
+                { type: 'email', message: 'Email không hợp lệ' },
+              ]}
+            >
+              <Input
+                placeholder="Nhập email người dùng"
+                className="!rounded-lg !bg-white/5 !border-white/10 !text-sm !text-white placeholder:!text-slate-600"
+                prefix={<MailOutlined className="text-slate-500" />}
+              />
+            </Form.Item>
 
             <Form.Item
               name="name"

@@ -211,6 +211,7 @@ export const adminService = {
   updateUser: (
     id: string,
     data: {
+      email?: string;
       name?: string;
       avatar?: string;
       role?: 'USER' | 'MODERATOR' | 'ADMIN';
