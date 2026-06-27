@@ -82,7 +82,8 @@ interface VideoCardItemProps {
   badge?: string;
   badgeColor?: string;
   minWidth?: number;
-  showDuration?: boolean; // show duration at bottom-right (for search results)
+  showDuration?: boolean;
+  isGrid?: boolean;
 }
 
 function VideoCardItem({
@@ -95,11 +96,12 @@ function VideoCardItem({
   badgeColor = 'bg-primary/90',
   minWidth = 280,
   showDuration = false,
+  isGrid = false,
 }: VideoCardItemProps) {
   return (
     <div
-      style={{ minWidth, maxWidth: minWidth }}
-      className="group cursor-pointer shrink-0 flex flex-col"
+      style={{ minWidth: isGrid ? undefined : minWidth, maxWidth: isGrid ? undefined : minWidth }}
+      className={`group cursor-pointer flex flex-col ${isGrid ? '' : 'shrink-0'}`}
       onClick={onClick}
     >
       <div className="relative rounded-2xl overflow-hidden mb-3 shrink-0 bg-dark-300 aspect-[16/10]">
@@ -236,7 +238,7 @@ export default function UserExplorePage() {
     const errorTimer = window.setTimeout(() => {
       message.error({ content: 'Không thể tải video', key: 'explore-load' });
     }, 15000);
-    videoService.discoverSearch({ q: 'Kpop 2026', limit: 8 })
+    videoService.discoverSearch({ q: 'Kpop 2026', limit: 10 })
       .then((r) => {
         clearTimeout(errorTimer);
         setSearchResults(r.data.data.videos);
@@ -269,7 +271,7 @@ export default function UserExplorePage() {
     // Otherwise do normal text search
     setLoadingSearch(true);
     const key = message.loading({ content: 'Dang tim kiem...', duration: 0, key: 'search-load' });
-    videoService.discoverSearch({ q, limit: 8 })
+    videoService.discoverSearch({ q, limit: 10 })
       .then((r) => {
         setSearchResults(r.data.data.videos);
         message.success({ content: `Tim thay ${r.data.data.videos.length} video!`, key: 'search-load' });
@@ -352,18 +354,18 @@ export default function UserExplorePage() {
               <Spin size="large" />
             </div>
           ) : searchResults.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {searchResults.map((video) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {searchResults.slice(0, 10).map((video) => (
                 <VideoCardItem
                   key={video.youtubeId}
                   video={video}
+                  isGrid
                   badge={video.isKoreanVideo ? '🇰🇷 Hàn' : LEVEL_MAP[video.language] ?? video.language ?? 'Video'}
                   badgeColor="bg-primary/90"
                   onClick={() => handleVideoClick(video)}
                   showFavoriteBtn={isAuth}
                   isFavorited={favoriteIds.has(video.youtubeId)}
                   onToggleFavorite={(e) => handleToggleFavoriteByYtId(video.youtubeId, e)}
-                  minWidth={0}
                   showDuration
                 />
               ))}

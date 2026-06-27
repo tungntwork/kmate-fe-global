@@ -68,8 +68,13 @@ export default function LearningPlayerPage() {
   const [vocabDrawerOpen, setVocabDrawerOpen] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   // true = show "no subtitles" prompt; transitions to "processing" via SubtitleGenerationModal
-  const [showSubtitleModal, setShowSubtitleModal] = useState(false);
+  // Default true to block play while subtitle availability is being checked
+  const [showSubtitleModal, setShowSubtitleModal] = useState(true);
   const [subtitleGenerated, setSubtitleGenerated] = useState(false);
+
+  // Hydration guard: only render portal-based modals after client mount
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   const [selectedWord, setSelectedWord] = useState<{
     word: string;
     position: { x: number; y: number };
@@ -139,7 +144,7 @@ export default function LearningPlayerPage() {
     usePlayerStore.getState().setPlayBlocked(showSubtitleModal);
   }, [showSubtitleModal]);
 
-  useKeyboardShortcuts({ enabled: true, targetRef: containerRef });
+  useKeyboardShortcuts({ enabled: true });
 
   const { items: vocabItems, totalCount: vocabCount, saveWord } = useVocabulary();
 
@@ -293,9 +298,11 @@ export default function LearningPlayerPage() {
             if (subData.bilingualContent && Array.isArray(subData.bilingualContent)) {
               setSegments(subData.bilingualContent.map(mapSegment), videoId, subData.language);
               setSubtitleLoading(false);
+              setShowSubtitleModal(false);
             } else if (subData.subtitleContent && Array.isArray(subData.subtitleContent)) {
               setSegments(subData.subtitleContent.map(mapSegment), videoId, subData.language);
               setSubtitleLoading(false);
+              setShowSubtitleModal(false);
             }
           } else {
             setSubtitleLoading(false);
@@ -880,16 +887,18 @@ export default function LearningPlayerPage() {
         </div>
       )}
 
-      {/* AI Subtitle Generation Modal — full progress UI */}
-      <SubtitleGenerationModal
-        open={showSubtitleModal}
-        videoId={videoId}
-        videoTitle={video?.title}
-        videoThumbnail={video?.thumbnail}
-        onClose={handleCloseSubtitleModal}
-        onSubtitleReady={handleSubtitleReady}
-        onSubtitleError={handleSubtitleError}
-      />
+      {/* AI Subtitle Generation Modal — only render after mount to avoid SSR hydration mismatch */}
+      {mounted && (
+        <SubtitleGenerationModal
+          open={showSubtitleModal}
+          videoId={videoId}
+          videoTitle={video?.title}
+          videoThumbnail={video?.thumbnail}
+          onClose={handleCloseSubtitleModal}
+          onSubtitleReady={handleSubtitleReady}
+          onSubtitleError={handleSubtitleError}
+        />
+      )}
 
       {/* Vocabulary Drawer */}
       <Drawer

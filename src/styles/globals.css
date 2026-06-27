@@ -555,6 +555,8 @@
   border: 1px dashed rgba(124, 77, 255, 0.3) !important;
   border-radius: 16px !important;
   transition: all 0.2s ease !important;
+  min-height: 0 !important;
+  height: 160px !important;
 }
 .kmate-dragger .ant-upload-drag:hover {
   border-color: rgba(124, 77, 255, 0.6) !important;
@@ -562,6 +564,7 @@
 }
 .kmate-dragger .ant-upload-drag-icon {
   color: #7C4DFF !important;
+  margin-bottom: 0 !important;
 }
 .kmate-dragger .ant-upload-text {
   color: #e2e8f0 !important;

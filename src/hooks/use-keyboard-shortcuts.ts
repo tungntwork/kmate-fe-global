@@ -122,13 +122,13 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
       return;
     }
 
-    const { settings, isPlaying } = usePlayerStore.getState();
+    const { settings, isPlaying, playBlocked } = usePlayerStore.getState();
     const currentSpeedIndex = SPEEDS.indexOf(settings.speed);
 
     const shortcuts: ShortcutConfig[] = [
-      { key: ' ',   action: togglePlayRef.current!,   description: 'Play/Pause',         whenPlaying: true,  whenPaused: true },
-      { key: 'k',   action: togglePlayRef.current!,   description: 'Play/Pause',         whenPlaying: true,  whenPaused: true },
-      { key: 'K',   action: togglePlayRef.current!,   description: 'Play/Pause' },
+      { key: ' ',   action: () => { if (playBlocked) return; togglePlayRef.current!(); },   description: 'Play/Pause',         whenPlaying: true,  whenPaused: true },
+      { key: 'k',   action: () => { if (playBlocked) return; togglePlayRef.current!(); },   description: 'Play/Pause',         whenPlaying: true,  whenPaused: true },
+      { key: 'K',   action: () => { if (playBlocked) return; togglePlayRef.current!(); },   description: 'Play/Pause' },
 
       { key: 'ArrowLeft',  action: () => seekRelativeRef.current!(-seekAmount), description: `Rewind ${seekAmount}s` },
       { key: 'ArrowRight', action: () => seekRelativeRef.current!(seekAmount),  description: `Forward ${seekAmount}s` },

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Upload,
   Table,
@@ -48,6 +49,7 @@ interface FakePreviewUser {
   name: string;
   email: string;
   role: string;
+  avatar?: string;
 }
 
 function StatCard({ label, value, icon, color, bg }: {
@@ -91,6 +93,7 @@ function CardHeader({ title, subtitle }: { title: string; subtitle?: string }) {
 }
 
 export default function AdminUserManagementClient() {
+  const router = useRouter();
   const [tab, setTab] = useState('import');
   const [msgApi, contextHolder] = message.useMessage();
 
@@ -106,6 +109,7 @@ export default function AdminUserManagementClient() {
   const [fakeCount, setFakeCount] = useState(10);
   const [fakeMethod, setFakeMethod] = useState<'random' | 'ai'>('random');
   const [fakeRole, setFakeRole] = useState<string>('USER');
+  const [fakeAvatar, setFakeAvatar] = useState<'original' | 'letter'>('original');
   const [generating, setGenerating] = useState(false);
   const [generateResult, setGenerateResult] = useState<{ created: number; method: string; role: string } | null>(null);
   const [fakePreview, setFakePreview] = useState<FakePreviewUser[]>([]);
@@ -214,22 +218,54 @@ export default function AdminUserManagementClient() {
   // ── Fake user preview (mock based on method) ───────────────
   useEffect(() => {
     const previews: FakePreviewUser[] = [];
-    const KoreanFirst = ['Min-jun', 'Seo-yeon', 'Ji-woong', 'Yu-jin', 'Hyun-woo', 'Jae-hyun', 'Bo-young'];
-    const KoreanLast = ['Kim', 'Lee', 'Park', 'Choi', 'Jung', 'Kang', 'Yoon'];
-    const EngFirst = ['James', 'Emma', 'Liam', 'Olivia', 'Noah', 'Ava', 'Oliver'];
-    const EngLast = ['Smith', 'Johnson', 'Brown', 'Davis', 'Wilson', 'Martinez', 'Lopez'];
+
+    const vnFirst = [
+      'Minh', 'Thanh', 'Huy', 'Linh', 'Trang', 'Anh', 'Khoa', 'Phương',
+      'Thảo', 'Nam', 'Hùng', 'Liên', 'Dũng', 'Mai', 'Tuấn', 'Hà',
+      'Bảo', 'Lan', 'Quang', 'Yến', 'Văn', 'Hương', 'Long', 'Nga',
+      'Thông', 'Trí', 'Hoa', 'Đức', 'Oanh', 'Phong',
+    ];
+    const vnLast = [
+      'Nguyễn', 'Lê', 'Trần', 'Phạm', 'Hoàng', 'Huỳnh', 'Võ', 'Đặng',
+      'Bùi', 'Đỗ', 'Hồ', 'Ngô', 'Dương', 'Lý',
+    ];
+    const vnMid = [
+      'Thanh', 'Minh', 'Hoàng', 'Thị', 'Văn', 'Đức', 'Anh', 'Thu',
+      'Hải', 'Nam', 'Phương', 'Lan', 'Hương', 'Trung', 'Thảo', 'Quang',
+      'Huy', 'Linh', 'Trí', 'Tuấn', 'Hùng', 'Bảo', 'Long', 'Khánh',
+    ];
+
+    const rand = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+
+    const genEmail = (name: string, method: 'random' | 'ai') => {
+      const base = name.toLowerCase().replace(/\s+/g, '');
+      const digits = method === 'random'
+        ? String(Math.floor(Math.random() * 900) + 100)
+        : String(Math.floor(Math.random() * 9000) + 100); // 3–6 digits
+      return `${base}${digits}@gmail.com`;
+    };
+
+    const genAvatar = (name: string, method: 'random' | 'ai') => {
+      if (method === 'random') return undefined;
+      return fakeAvatar === 'letter'
+        ? `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C4DFF&color=fff&bold=true`
+        : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=7C4DFF&textColor=ffffff`;
+    };
+
     for (let i = 0; i < 3; i++) {
-      const useKorean = fakeMethod === 'ai' || Math.random() > 0.4;
-      const first = useKorean ? KoreanFirst[Math.floor(Math.random() * KoreanFirst.length)] : EngFirst[Math.floor(Math.random() * EngFirst.length)];
-      const last = useKorean ? KoreanLast[Math.floor(Math.random() * KoreanLast.length)] : EngLast[Math.floor(Math.random() * EngLast.length)];
+      const last = rand(vnLast);
+      const mid = rand(vnMid);
+      const first = rand(vnFirst);
+      const fullName = `${last} ${mid} ${first}`;
       previews.push({
-        name: `${last} ${first}`,
-        email: `fake-preview-${i + 1}@kmate.local`,
+        name: fullName,
+        email: genEmail(fullName, fakeMethod),
         role: fakeRole,
+        avatar: genAvatar(fullName, fakeMethod),
       });
     }
     setFakePreview(previews);
-  }, [fakeMethod, fakeRole]);
+  }, [fakeMethod, fakeRole, fakeAvatar]);
 
   // ── Generate fake users handler ─────────────────────────────
   const handleGenerate = async () => {
@@ -240,7 +276,7 @@ export default function AdminUserManagementClient() {
     setGenerating(true);
     setGenerateResult(null);
     try {
-      const res = await adminService.generateFakeUsers({ count: fakeCount, method: fakeMethod, role: fakeRole });
+      const res = await adminService.generateFakeUsers({ count: fakeCount, method: fakeMethod, role: fakeRole, avatar: fakeAvatar });
       setGenerateResult(res.data.data);
       msgApi.success(`Đã tạo ${res.data.data.created} người dùng ${res.data.data.method === 'ai' ? 'bằng AI' : 'ngẫu nhiên'}!`);
     } catch (err: unknown) {
@@ -338,9 +374,17 @@ export default function AdminUserManagementClient() {
 
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-white">Quản lý Users</h2>
-          <p className="text-slate-500 text-xs mt-0.5">Import, tạo thử và xuất dữ liệu người dùng</p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            className="w-9 h-9 rounded-xl border border-white/10 text-slate-400 hover:text-white hover:border-white/20 flex items-center justify-center transition-all"
+          >
+            <span style={{ fontSize: 16 }}>&#8592;</span>
+          </button>
+          <div>
+            <h2 className="text-2xl font-black text-white">Quản lý Users</h2>
+            <p className="text-slate-500 text-xs mt-0.5">Import, tạo thử và xuất dữ liệu người dùng</p>
+          </div>
         </div>
       </div>
 
@@ -415,7 +459,7 @@ export default function AdminUserManagementClient() {
                   }}
                   className="kmate-dragger"
                 >
-                  <div className="flex flex-col items-center gap-3 py-6">
+                  <div className="flex flex-col items-center gap-2 py-4">
                     <div
                       className="w-12 h-12 rounded-2xl flex items-center justify-center"
                       style={{ backgroundColor: 'rgba(124,77,255,0.15)' }}
@@ -668,6 +712,32 @@ export default function AdminUserManagementClient() {
                     />
                   </div>
 
+                  {/* Avatar option — only for AI method */}
+                  {fakeMethod === 'ai' && (
+                    <div>
+                      <label className="text-slate-400 text-xs font-medium block mb-2">Avatar</label>
+                      <div className="flex gap-2">
+                        {[
+                          { value: 'original' as const, label: 'Avatar gốc', preview: '🖼️' },
+                          { value: 'letter' as const, label: 'Chữ cái', preview: '🔤' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setFakeAvatar(opt.value)}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs transition-all ${
+                              fakeAvatar === opt.value
+                                ? 'border-primary/50 bg-primary/10 text-primary'
+                                : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20'
+                            }`}
+                          >
+                            <span>{opt.preview}</span>
+                            <span className="font-medium">{opt.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Generate button */}
                   <Button
                     type="primary"
@@ -707,7 +777,7 @@ export default function AdminUserManagementClient() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-white/5">
-                          {['#', 'Name', 'Email', 'Role'].map((h) => (
+                          {['#', 'Avatar', 'Name', 'Email', 'Role'].map((h) => (
                             <th key={h} className="text-left text-slate-500 text-xs font-semibold uppercase tracking-wide px-3 py-2.5 first:pl-4">
                               {h}
                             </th>
@@ -718,6 +788,20 @@ export default function AdminUserManagementClient() {
                         {fakePreview.map((u, i) => (
                           <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
                             <td className="px-3 py-2.5 first:pl-4 text-slate-500 text-xs">{i + 1}</td>
+                            <td className="px-3 py-2.5">
+                              {u.avatar ? (
+                                <img
+                                  src={u.avatar}
+                                  alt={u.name}
+                                  className="w-8 h-8 rounded-full object-cover"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                                  <UserAddOutlined className="text-slate-500 text-xs" />
+                                </div>
+                              )}
+                            </td>
                             <td className="px-3 py-2.5 text-white text-xs font-medium">{u.name}</td>
                             <td className="px-3 py-2.5 text-slate-400 text-xs">{u.email}</td>
                             <td className="px-3 py-2.5">

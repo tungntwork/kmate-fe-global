@@ -54,13 +54,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       key: 'profile',
       icon: <UserOutlined />,
       label: 'Hồ sơ',
-      onClick: () => router.push('/user/profile'),
+      onClick: () => router.push('/admin/profile'),
     },
     {
       key: 'settings',
       icon: <SettingOutlined />,
       label: 'Cài đặt',
-      onClick: () => router.push('/user/settings'),
+      onClick: () => router.push('/admin/profile'),
     },
     { type: 'divider' as const },
     {

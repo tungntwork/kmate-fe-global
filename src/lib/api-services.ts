@@ -190,7 +190,7 @@ export const adminService = {
     URL.revokeObjectURL(url);
   },
 
-  generateFakeUsers: (data: { count: number; method: 'random' | 'ai'; role?: string }) =>
+  generateFakeUsers: (data: { count: number; method: 'random' | 'ai'; role?: string; avatar?: 'original' | 'letter' }) =>
     api.post<{ data: { created: number; method: string; role: string } }>('/admin/users/fake', data),
 
   getExportPreview: (params?: { includeOAuth?: boolean; includeBanned?: boolean }) =>
@@ -286,6 +286,15 @@ export const adminService = {
 
   getAnalytics: () =>
     api.get<{ data: AdminAnalytics }>('/admin/analytics'),
+
+  createFakePayment: (data: { userId: string; amount: number; coinAmount: number; status?: 'PENDING' | 'SUCCESS' }) =>
+    api.post<{ data: unknown }>('/admin/payments/create-fake', data),
+
+  updatePayment: (paymentId: string, data: { status?: string; amount?: number; paidAt?: string | null }) =>
+    api.put<{ success: boolean }>(`/admin/payments/${paymentId}`, data),
+
+  createFakeAIJob: (data: { userId: string; videoId: string; type?: string; status?: string; priority?: number }) =>
+    api.post<{ data: unknown }>('/admin/ai-jobs/create-fake', data),
 };
 
 // ============================================================
@@ -554,7 +563,7 @@ export interface AdminPayment {
   payosOrderCode: string | null;
   createdAt: string;
   paidAt: string | null;
-  user: { id: string; email: string; name: string | null };
+  user: { id: string; email: string; name: string | null; avatar: string | null };
 }
 
 export interface AIJob {
@@ -639,6 +648,11 @@ export interface AdminAnalytics {
     totalMinutesLearned: number;
     totalRevenue: number;
   }>;
+  // Flat summary fields used by AdminProfilePage
+  totalUsers: number;
+  totalPayments: number;
+  totalAchievements: number;
+  totalAIJobs: number;
 }
 
 // ============================================================
