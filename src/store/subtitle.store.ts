@@ -95,26 +95,20 @@ export const useSubtitleStore = create<SubtitleState & SubtitleActions>()(
         const { segments } = get();
         if (!segments.length) return null;
 
-        // Binary search for efficiency - O(log n)
-        let left = 0;
-        let right = segments.length - 1;
+        // Linear scan: find the segment that contains `time` (start <= time <= end).
+        // This is O(n) but correct. With typical subtitle segment counts (hundreds),
+        // the performance difference vs binary search is negligible.
+        // Binary search was incorrect because segments are not uniformly distributed
+        // and the mid-point comparison logic didn't handle the "time falls in a gap"
+        // case properly — leading to the wrong segment being returned.
         let result: SubtitleSegment | null = null;
         let resultIndex = -1;
-
-        while (left <= right) {
-          const mid = Math.floor((left + right) / 2);
-          const segment = segments[mid];
-
-          if (time >= segment.startTime && time <= segment.endTime) {
-            result = segment;
-            resultIndex = mid;
+        for (let i = 0; i < segments.length; i++) {
+          const seg = segments[i];
+          if (time >= seg.startTime && time <= seg.endTime) {
+            result = seg;
+            resultIndex = i;
             break;
-          } else if (time < segment.startTime) {
-            right = mid - 1;
-          } else {
-            result = segment;
-            resultIndex = mid;
-            left = mid + 1;
           }
         }
 
