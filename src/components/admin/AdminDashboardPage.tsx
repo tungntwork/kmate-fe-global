@@ -207,7 +207,6 @@ export default function AdminDashboardPage() {
     'Videos xem': d.videosWatched,
     'Flashcards ôn': d.flashcardsReviewed,
     'Quiz làm': d.quizzesTaken,
-    'Coins nhận': d.coinsEarned,
   }));
 
   const revenueChart = (analytics?.revenueStats ?? []).slice(-14).map((d) => ({
@@ -217,7 +216,7 @@ export default function AdminDashboardPage() {
 
   const userGrowthChart = (analytics?.platformStats ?? []).slice(-14).map((d) => ({
     date: new Date(d.date).toLocaleDateString('vi-VN', { month: 'short', day: 'numeric' }),
-    'Người dùng mới': d.newUsers,
+    'Tổng người dùng': d.totalUsers,
     'Hoạt động': d.activeUsers,
   }));
 
@@ -260,7 +259,7 @@ export default function AdminDashboardPage() {
         <StatCard title="Tổng video" value={data?.totalVideos ?? 0} icon={<VideoCameraOutlined />} color={C.cyan} bg="rgba(0,229,255,0.08)" />
         <StatCard title="Doanh thu" value={`${(totalRevenue / 1000).toFixed(1)}k đ`} sub={`${data?.totalPayments ?? 0} giao dịch`} icon={<DollarOutlined />} color={C.amber} bg="rgba(245,158,11,0.08)" />
         <StatCard title="AI Jobs" value={aiJobsTotal} sub={`${aiJobsFailed} thất bại`} icon={<RobotOutlined />} color={aiJobsFailed > 0 ? C.red : C.purple} bg={aiJobsFailed > 0 ? 'rgba(239,68,68,0.08)' : 'rgba(124,77,255,0.08)'} />
-        <StatCard title="Coins nhận (7 ngày)" value={(analytics?.dailyStats ?? []).reduce((s, d) => s + d.coinsEarned, 0).toLocaleString()} icon={<TrophyOutlined />} color={C.amber} bg="rgba(245,158,11,0.08)" />
+        <StatCard title="Tổng Coins người dùng" value={(analytics?.totalCoinsAllUsers ?? 0).toLocaleString()} icon={<TrophyOutlined />} color={C.amber} bg="rgba(245,158,11,0.08)" />
       </div>
 
       {/* Row 1 */}
@@ -277,7 +276,6 @@ export default function AdminDashboardPage() {
                 <Line type="monotone" dataKey="Videos xem" stroke={C.purple} strokeWidth={2} dot={{ r: 2.5, fill: C.purple }} activeDot={{ r: 5, strokeWidth: 0 }} />
                 <Line type="monotone" dataKey="Flashcards ôn" stroke={C.cyan} strokeWidth={2} dot={{ r: 2.5, fill: C.cyan }} activeDot={{ r: 5, strokeWidth: 0 }} />
                 <Line type="monotone" dataKey="Quiz làm" stroke={C.green} strokeWidth={2} dot={{ r: 2.5, fill: C.green }} activeDot={{ r: 5, strokeWidth: 0 }} />
-                <Line type="monotone" dataKey="Coins nhận" stroke={C.amber} strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -306,7 +304,7 @@ export default function AdminDashboardPage() {
 
       {/* Row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <ChartCard title="Tăng trưởng người dùng" subtitle="Người dùng mới & hoạt động — 14 ngày · Di chuột để xem chi tiết">
+        <ChartCard title="Tăng trưởng người dùng" subtitle="Tổng người dùng & hoạt động — 14 ngày · Di chuột để xem chi tiết">
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={userGrowthChart} margin={{ top: 4, right: 8, left: -24, bottom: 0 }} barGap={4}>
               <CartesianGrid {...commonGrid} vertical={false} />
@@ -314,7 +312,7 @@ export default function AdminDashboardPage() {
               <YAxis {...commonAxis} />
               <Tooltip content={<ChartTooltip />} />
               <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8' } as React.CSSProperties} />
-              <Bar dataKey="Người dùng mới" fill={C.purple} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="Tổng người dùng" fill={C.purple} radius={[3, 3, 0, 0]} />
               <Bar dataKey="Hoạt động" fill={C.cyan} radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

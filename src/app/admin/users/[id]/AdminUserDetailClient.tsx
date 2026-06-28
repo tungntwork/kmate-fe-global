@@ -86,6 +86,10 @@ interface EditFormValues {
   streak: number;
   isNewUser: boolean;
   lastActiveAt: dayjs.Dayjs | null;
+  quizCount: number;
+  watchProgressCount: number;
+  paymentCount: number;
+  totalPaymentAmount: number;
 }
 
 export default function AdminUserDetailPage() {
@@ -138,6 +142,10 @@ export default function AdminUserDetailPage() {
       streak: user.streak,
       isNewUser: user.isNewUser ?? false,
       lastActiveAt: user.lastActiveAt ? dayjs(user.lastActiveAt) : null,
+      quizCount: (user as any)._count?.quizzes ?? 0,
+      watchProgressCount: (user as any)._count?.watchProgress ?? 0,
+      paymentCount: (user as any)._count?.payments ?? 0,
+      totalPaymentAmount: (user as any).totalPaymentAmount ?? 0,
     });
     setAvatarPreview(user.avatar || '');
     setEditOpen(true);
@@ -159,17 +167,39 @@ export default function AdminUserDetailPage() {
   const handleSaveEdit = async (values: EditFormValues) => {
     setEditLoading(true);
     try {
-      const res = await adminService.updateUser(params.id as string, {
-        email: values.email || undefined,
-        name: values.name || undefined,
-        avatar: values.avatar || undefined,
-        role: values.role,
-        coinBalance: values.coinBalance,
-        streak: values.streak,
-        isNewUser: values.isNewUser,
-        lastActiveAt: values.lastActiveAt ? values.lastActiveAt.toISOString() : null,
-      });
-      setUser((u) => u ? { ...u, ...res.data.data } : u);
+      const statsPayload: Parameters<typeof adminService.overrideUserStats>[1] = {};
+
+      if (values.quizCount !== (user as any)._count?.quizzes) {
+        statsPayload.quizCount = values.quizCount;
+      }
+      if (values.watchProgressCount !== (user as any)._count?.watchProgress) {
+        statsPayload.watchProgressCount = values.watchProgressCount;
+      }
+      if (values.paymentCount !== (user as any)._count?.payments) {
+        statsPayload.paymentCount = values.paymentCount;
+      }
+      if (values.totalPaymentAmount !== (user as any).totalPaymentAmount) {
+        statsPayload.totalPaymentAmount = values.totalPaymentAmount;
+      }
+
+      const [userRes, statsRes] = await Promise.all([
+        adminService.updateUser(params.id as string, {
+          email: values.email || undefined,
+          name: values.name || undefined,
+          avatar: values.avatar || undefined,
+          role: values.role,
+          coinBalance: values.coinBalance,
+          streak: values.streak,
+          isNewUser: values.isNewUser,
+          lastActiveAt: values.lastActiveAt ? values.lastActiveAt.toISOString() : null,
+        }),
+        Object.keys(statsPayload).length > 0
+          ? adminService.overrideUserStats(params.id as string, statsPayload)
+          : Promise.resolve(null),
+      ]);
+
+      const merged = { ...userRes.data.data, ...(statsRes ? statsRes.data.data : {}) };
+      setUser((u) => u ? { ...u, ...merged } as AdminUserDetail : u);
       setEditOpen(false);
       antdNotification.success({
         message: 'Cập nhật thành công',
@@ -403,9 +433,15 @@ export default function AdminUserDetailPage() {
             />
             <StatPill
               label="Thanh toán"
-              value={user._count.payments}
+              value={`${user._count.payments} lần`}
               icon={<DollarOutlined />}
               color={C.green}
+            />
+            <StatPill
+              label="Tổng thanh toán"
+              value={`${((user as any).totalPaymentAmount ?? 0).toLocaleString('vi-VN')} đ`}
+              icon={<DollarOutlined />}
+              color={C.amber}
             />
           </div>
 
@@ -700,6 +736,66 @@ export default function AdminUserDetailPage() {
                   { label: <span className="text-slate-300 text-sm">Có — new user</span>, value: true },
                   { label: <span className="text-slate-300 text-sm">Không — đã quen</span>, value: false },
                 ]}
+              />
+            </Form.Item>
+
+            {/* Stats override section */}
+            <Divider className="!mt-4 !mb-2" style={{ borderColor: C.border }} />
+            <div className="col-span-2 mb-2">
+              <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide">Thống kê — Quản lý số liệu</p>
+            </div>
+
+            <Form.Item
+              name="quizCount"
+              label={<span className="text-slate-400 text-xs">Số Quiz</span>}
+              rules={[{ required: true, message: 'Vui lòng nhập số quiz' }]}
+            >
+              <InputNumber
+                placeholder="0"
+                min={0}
+                className="!w-full !rounded-lg !bg-white/5 !border-white/10 !text-sm !text-white"
+                prefix={<span className="text-slate-500 text-sm">📝</span>}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="watchProgressCount"
+              label={<span className="text-slate-400 text-xs">Số video đã xem</span>}
+              rules={[{ required: true, message: 'Vui lòng nhập số video đã xem' }]}
+            >
+              <InputNumber
+                placeholder="0"
+                min={0}
+                className="!w-full !rounded-lg !bg-white/5 !border-white/10 !text-sm !text-white"
+                prefix={<span className="text-slate-500 text-sm">🎬</span>}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="paymentCount"
+              label={<span className="text-slate-400 text-xs">Số thanh toán</span>}
+              rules={[{ required: true, message: 'Vui lòng nhập số thanh toán' }]}
+            >
+              <InputNumber
+                placeholder="0"
+                min={0}
+                className="!w-full !rounded-lg !bg-white/5 !border-white/10 !text-sm !text-white"
+                prefix={<DollarOutlined className="text-slate-500" />}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="totalPaymentAmount"
+              label={<span className="text-slate-400 text-xs">Tổng tiền thanh toán (VNĐ)</span>}
+              rules={[{ required: true, message: 'Vui lòng nhập tổng tiền' }]}
+            >
+              <InputNumber
+                placeholder="0"
+                min={0}
+                className="!w-full !rounded-lg !bg-white/5 !border-white/10 !text-sm !text-white [&_.ant-input-number-input-wrap]:!text-white"
+                prefix={<DollarOutlined className="text-slate-500" />}
+                formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                parser={(v) => String(v).replace(/,/g, '') as unknown as 0}
               />
             </Form.Item>
 

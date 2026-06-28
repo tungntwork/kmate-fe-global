@@ -224,6 +224,17 @@ export const adminService = {
   ) =>
     api.put<{ data: AdminUserDetail }>(`/admin/users/${id}`, data),
 
+  overrideUserStats: (
+    id: string,
+    data: {
+      quizCount?: number;
+      watchProgressCount?: number;
+      paymentCount?: number;
+      totalPaymentAmount?: number;
+    },
+  ) =>
+    api.post<{ data: AdminUserDetail }>(`/admin/users/${id}/override-stats`, data),
+
   getTransactions: (params?: { page?: number; limit?: number }) =>
     api.get<{ data: AdminTransaction[]; pagination: Pagination }>('/admin/transactions', { params }),
 
@@ -538,6 +549,7 @@ export interface AdminUserDetail extends AdminUser {
     watchProgress: number;
     payments: number;
   };
+  totalPaymentAmount?: number;
 }
 
 export interface AdminTransaction {
@@ -647,12 +659,14 @@ export interface AdminAnalytics {
     totalVideosWatched: number;
     totalMinutesLearned: number;
     totalRevenue: number;
+    totalUsers: number;
   }>;
   // Flat summary fields used by AdminProfilePage
   totalUsers: number;
   totalPayments: number;
   totalAchievements: number;
   totalAIJobs: number;
+  totalCoinsAllUsers: number;
 }
 
 // ============================================================
