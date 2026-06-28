@@ -306,6 +306,30 @@ export const adminService = {
 
   createFakeAIJob: (data: { userId: string; videoId: string; type?: string; status?: string; priority?: number }) =>
     api.post<{ data: unknown }>('/admin/ai-jobs/create-fake', data),
+
+  updateDailyStats: (data: {
+    date: string;
+    videosWatched?: number;
+    minutesLearned?: number;
+    flashcardsReviewed?: number;
+    quizzesTaken?: number;
+    averageQuizScore?: number;
+    coinsEarned?: number;
+    coinsSpent?: number;
+  }) =>
+    api.put<{ data: { date: string; videosWatched: number; minutesLearned: number; flashcardsReviewed: number; quizzesTaken: number; averageQuizScore: number; coinsEarned: number; coinsSpent: number } }>('/admin/analytics/daily-stats', data),
+
+  bulkUpdateDailyStats: (records: Array<{
+    date: string;
+    videosWatched?: number;
+    minutesLearned?: number;
+    flashcardsReviewed?: number;
+    quizzesTaken?: number;
+    averageQuizScore?: number;
+    coinsEarned?: number;
+    coinsSpent?: number;
+  }>) =>
+    api.put<{ data: { updated: number } }>('/admin/analytics/daily-stats/bulk', { records }),
 };
 
 // ============================================================

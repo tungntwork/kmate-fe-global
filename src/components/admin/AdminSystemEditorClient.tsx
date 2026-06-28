@@ -30,6 +30,7 @@ import {
   LoadingOutlined,
   SwapOutlined,
   RiseOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import {
   Drawer,
@@ -47,8 +48,21 @@ import {
   Modal,
   Alert,
   Upload,
+  DatePicker,
 } from 'antd';
 import type { UploadFile, UploadProps } from 'antd/es/upload';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as ChartTooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
 import dayjs from 'dayjs';
 import {
   adminService,
@@ -215,7 +229,7 @@ function EmptyState({ icon, message }: { icon: React.ReactNode; message: string 
 
 // ── Tab definitions ─────────────────────────────────────────
 
-type TabKey = 'dashboard' | 'users' | 'achievements' | 'packages' | 'payments' | 'ai-queue' | 'reports' | 'logs';
+type TabKey = 'dashboard' | 'users' | 'achievements' | 'packages' | 'payments' | 'ai-queue' | 'reports' | 'logs' | 'analytics';
 
 const TABS: Array<{ key: TabKey; icon: React.ReactNode; label: string }> = [
   { key: 'dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
@@ -226,6 +240,7 @@ const TABS: Array<{ key: TabKey; icon: React.ReactNode; label: string }> = [
   { key: 'ai-queue', icon: <RobotOutlined />, label: 'AI Queue' },
   { key: 'reports', icon: <MailOutlined />, label: 'Báo cáo tuần' },
   { key: 'logs', icon: <FileTextOutlined />, label: 'Nhật ký' },
+  { key: 'analytics', icon: <BarChartOutlined />, label: 'Biểu đồ học tập' },
 ];
 
 const ROLE_OPTIONS = [
@@ -2007,6 +2022,533 @@ function LogsTab({ msgApi }: { msgApi: ReturnType<typeof message.useMessage>[0] 
   );
 }
 
+// ════════════════════════════════════════════════════════════
+// TAB: ANALYTICS (Biểu đồ học tập)
+// ════════════════════════════════════════════════════════════
+
+type AnalyticsSubKey = 'flashcard' | 'video' | 'quiz';
+
+const ANALYTICS_TABS: Array<{ key: AnalyticsSubKey; icon: React.ReactNode; label: string }> = [
+  { key: 'flashcard', icon: <FileTextOutlined />, label: 'Flashcard ôn' },
+  { key: 'video', icon: <RiseOutlined />, label: 'Video đã xem' },
+  { key: 'quiz', icon: <TrophyOutlined />, label: 'Quiz làm' },
+];
+
+const ANALYTICS_COLORS = {
+  flashcard: C.purple,
+  video: C.cyan,
+  quiz: C.amber,
+};
+
+function CustomTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-xl border border-white/10 px-3 py-2 text-xs" style={{ backgroundColor: '#0f1623' }}>
+      <p className="text-slate-300 font-semibold mb-1">{label}</p>
+      {payload.map((p: any) => (
+        <p key={p.dataKey} style={{ color: p.color }} className="font-medium">
+          {p.name}: <span className="text-white">{typeof p.value === 'number' ? p.value.toLocaleString('vi-VN') : p.value}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function ChartCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-white/10 p-5" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}>
+      <div className="mb-4">
+        <h3 className="text-white font-bold text-sm">{title}</h3>
+        {subtitle && <p className="text-slate-500 text-xs mt-0.5">{subtitle}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function AnalyticsTab({ msgApi }: { msgApi: ReturnType<typeof message.useMessage>[0] }) {
+  const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [subTab, setSubTab] = useState<AnalyticsSubKey>('flashcard');
+  const [range, setRange] = useState<'7' | '14' | '30'>('14');
+
+  // Edit/Create drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<'edit' | 'create'>('edit');
+  const [editDate, setEditDate] = useState<{ date: string; label: string } | null>(null);
+  const [createDate, setCreateDate] = useState<string>(dayjs().format('YYYY-MM-DD'));
+  const [editForm, setEditForm] = useState({
+    videosWatched: 0,
+    minutesLearned: 0,
+    flashcardsReviewed: 0,
+    quizzesTaken: 0,
+    averageQuizScore: 0,
+    coinsEarned: 0,
+    coinsSpent: 0,
+  });
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await adminService.getAnalytics();
+      setAnalytics(res.data.data);
+    } catch { msgApi.error('Lỗi tải dữ liệu biểu đồ'); }
+    finally { setLoading(false); }
+  }, [msgApi]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleEditRow = (d: typeof rawData[0]) => {
+    setDrawerMode('edit');
+    setEditDate({ date: d.date, label: dayjs(d.date).format('DD/MM/YYYY') });
+    setEditForm({
+      videosWatched: d.videosWatched,
+      minutesLearned: d.minutesLearned,
+      flashcardsReviewed: d.flashcardsReviewed,
+      quizzesTaken: d.quizzesTaken,
+      averageQuizScore: 0,
+      coinsEarned: d.coinsEarned,
+      coinsSpent: d.coinsSpent,
+    });
+    setDrawerOpen(true);
+  };
+
+  const handleCreateRow = () => {
+    setDrawerMode('create');
+    setEditDate(null);
+    setCreateDate(dayjs().format('YYYY-MM-DD'));
+    setEditForm({
+      videosWatched: 0,
+      minutesLearned: 0,
+      flashcardsReviewed: 0,
+      quizzesTaken: 0,
+      averageQuizScore: 0,
+      coinsEarned: 0,
+      coinsSpent: 0,
+    });
+    setDrawerOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (drawerMode === 'edit' && !editDate) return;
+    if (drawerMode === 'create' && !createDate) {
+      msgApi.warning('Vui lòng chọn ngày');
+      return;
+    }
+    setSaving(true);
+    try {
+      await adminService.updateDailyStats({
+        date: drawerMode === 'edit' ? editDate!.date : createDate,
+        ...editForm,
+      });
+      msgApi.success(
+        drawerMode === 'edit'
+          ? `Đã lưu dữ liệu ngày ${editDate!.label}`
+          : `Đã thêm dữ liệu ngày ${dayjs(createDate).format('DD/MM/YYYY')}`
+      );
+      setDrawerOpen(false);
+      load();
+    } catch (e: any) {
+      msgApi.error(e?.response?.data?.error?.message ?? 'Lỗi lưu dữ liệu');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="flex items-center justify-center py-16"><Spin size="large" /></div>;
+  if (!analytics) return <EmptyState icon={<BarChartOutlined style={{ fontSize: 24, color: '#64748b' }} />} message="Không tải được dữ liệu" />;
+
+  const days = parseInt(range);
+  const rawData = (analytics.dailyStats ?? []).slice(-days).reverse();
+  const labels = rawData.map((d) => dayjs(d.date).format('DD/MM'));
+
+  const flashcardData = rawData.map((d) => ({ date: dayjs(d.date).format('DD/MM/YYYY'), value: d.flashcardsReviewed }));
+  const videoData = rawData.map((d) => ({ date: dayjs(d.date).format('DD/MM/YYYY'), value: d.videosWatched }));
+  const quizData = rawData.map((d) => ({ date: dayjs(d.date).format('DD/MM/YYYY'), value: d.quizzesTaken }));
+
+  const totalFlashcard = flashcardData.reduce((s, d) => s + d.value, 0);
+  const totalVideo = videoData.reduce((s, d) => s + d.value, 0);
+  const totalQuiz = quizData.reduce((s, d) => s + d.value, 0);
+  const avgFlashcard = days > 0 ? Math.round(totalFlashcard / days) : 0;
+  const avgVideo = days > 0 ? Math.round(totalVideo / days) : 0;
+  const avgQuiz = days > 0 ? Math.round(totalQuiz / days) : 0;
+
+  const axisStyle = { fontSize: 11, fill: '#64748b', fontWeight: 500 } as const;
+  const gridProps = { stroke: 'rgba(255,255,255,0.04)', strokeDasharray: '4 4' } as const;
+
+  const renderChart = (data: { date: string; value: number }[], color: string, label: string) => (
+    <ResponsiveContainer width="100%" height={280}>
+      <LineChart data={data} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
+        <CartesianGrid {...gridProps} />
+        <XAxis dataKey="date" tick={axisStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+        <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={40} />
+        <ChartTooltip content={<CustomTooltip />} />
+        <Line
+          type="monotone"
+          dataKey="value"
+          name={label}
+          stroke={color}
+          strokeWidth={2.5}
+          dot={{ r: 3, fill: color, strokeWidth: 0 }}
+          activeDot={{ r: 5, fill: color, strokeWidth: 0 }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+
+  const renderBarChart = (data: Array<{ date: string; fc: number; vc: number; qz: number }>, color: string, label: string) => (
+    <ResponsiveContainer width="100%" height={280}>
+      <BarChart data={data} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
+        <CartesianGrid {...gridProps} />
+        <XAxis dataKey="date" tick={axisStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+        <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={40} />
+        <ChartTooltip content={<CustomTooltip />} />
+        <Bar dataKey="value" name={label} fill={color} radius={[6, 6, 0, 0]} maxBarSize={48} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+
+  const comboData = rawData.map((d) => ({
+    date: dayjs(d.date).format('DD/MM/YYYY'),
+    dateShort: dayjs(d.date).format('DD/MM'),
+    fc: d.flashcardsReviewed,
+    vc: d.videosWatched,
+    qz: d.quizzesTaken,
+  }));
+
+  const renderComboChart = () => (
+    <ResponsiveContainer width="100%" height={320}>
+      <LineChart data={comboData} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
+        <CartesianGrid {...gridProps} />
+        <XAxis dataKey="date" tick={axisStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+        <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={40} />
+        <ChartTooltip content={<CustomTooltip />} />
+        <Legend wrapperStyle={{ fontSize: 12, color: '#94a3b8' }} />
+        <Line type="monotone" dataKey="fc" name="Flashcard" stroke={C.purple} strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+        <Line type="monotone" dataKey="vc" name="Video" stroke={C.cyan} strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+        <Line type="monotone" dataKey="qz" name="Quiz" stroke={C.amber} strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+
+  const renderBarComboChart = () => (
+    <ResponsiveContainer width="100%" height={320}>
+      <BarChart data={comboData} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
+        <CartesianGrid {...gridProps} />
+        <XAxis dataKey="date" tick={axisStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+        <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={40} />
+        <ChartTooltip content={<CustomTooltip />} />
+        <Legend wrapperStyle={{ fontSize: 12, color: '#94a3b8' }} />
+        <Bar dataKey="fc" name="Flashcard" fill={C.purple} radius={[6, 6, 0, 0]} maxBarSize={40} />
+        <Bar dataKey="vc" name="Video" fill={C.cyan} radius={[6, 6, 0, 0]} maxBarSize={40} />
+        <Bar dataKey="qz" name="Quiz" fill={C.amber} radius={[6, 6, 0, 0]} maxBarSize={40} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+
+  return (
+    <div className="space-y-5">
+      <InlineGuide
+        color={C.purple}
+        steps={[
+          'Chọn loại biểu đồ: Flashcard / Video / Quiz',
+          'Chọn khoảng thời gian: 7 / 14 / 30 ngày',
+          'Xem biểu đồ đường từng loại hoặc kết hợp',
+        ]}
+      />
+
+      {/* Sub-tab */}
+      <div className="flex flex-wrap items-center gap-2">
+        {ANALYTICS_TABS.map((tab) => {
+          const isActive = subTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setSubTab(tab.key)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all"
+              style={{
+                backgroundColor: isActive ? `${ANALYTICS_COLORS[tab.key]}20` : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${isActive ? `${ANALYTICS_COLORS[tab.key]}50` : 'rgba(255,255,255,0.08)'}`,
+                color: isActive ? ANALYTICS_COLORS[tab.key] : '#94a3b8',
+              }}
+            >
+              <span style={{ fontSize: 13 }}>{tab.icon}</span>
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Range selector */}
+      <div className="flex items-center gap-3">
+        <span className="text-slate-500 text-xs font-medium">Khoảng thời gian:</span>
+        <div className="flex gap-1">
+          {(['7', '14', '30'] as const).map((r) => (
+            <button
+              key={r}
+              onClick={() => setRange(r)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              style={{
+                backgroundColor: range === r ? `${C.purple}20` : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${range === r ? `${C.purple}50` : 'rgba(255,255,255,0.08)'}`,
+                color: range === r ? C.purple : '#64748b',
+              }}
+            >
+              {r} ngày
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard
+          label="Tổng Flashcard"
+          value={totalFlashcard.toLocaleString('vi-VN')}
+          icon={<FileTextOutlined />}
+          color={C.purple}
+          bg="rgba(124,77,255,0.08)"
+          sub={`TB ${avgFlashcard}/ngày`}
+        />
+        <StatCard
+          label="Tổng Video"
+          value={totalVideo.toLocaleString('vi-VN')}
+          icon={<RiseOutlined />}
+          color={C.cyan}
+          bg="rgba(0,229,255,0.08)"
+          sub={`TB ${avgVideo}/ngày`}
+        />
+        <StatCard
+          label="Tổng Quiz"
+          value={totalQuiz.toLocaleString('vi-VN')}
+          icon={<TrophyOutlined />}
+          color={C.amber}
+          bg="rgba(245,158,11,0.08)"
+          sub={`TB ${avgQuiz}/ngày`}
+        />
+      </div>
+
+      {/* Individual chart */}
+      <ChartCard
+        title={ANALYTICS_TABS.find(t => t.key === subTab)?.label ?? ''}
+        subtitle={`Theo ngày — ${days} ngày gần nhất`}
+      >
+        {subTab === 'flashcard' && renderChart(flashcardData, C.purple, 'Flashcard ôn')}
+        {subTab === 'video' && renderChart(videoData, C.cyan, 'Video đã xem')}
+        {subTab === 'quiz' && renderChart(quizData, C.amber, 'Quiz làm')}
+      </ChartCard>
+
+      {/* Combined line chart */}
+      <ChartCard
+        title="Biểu đồ kết hợp"
+        subtitle="So sánh 3 loại hoạt động theo thời gian"
+      >
+        {renderComboChart()}
+      </ChartCard>
+
+      {/* Combined bar chart */}
+      <ChartCard
+        title="Biểu đồ cột kết hợp"
+        subtitle="So sánh 3 loại hoạt động theo ngày"
+      >
+        {renderBarComboChart()}
+      </ChartCard>
+
+      {/* Raw data table */}
+      <ChartCard
+        title="Dữ liệu chi tiết theo ngày"
+        subtitle={`${days} ngày gần nhất — nhấn biểu tượng ✏️ để chỉnh sửa`}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-slate-500 text-xs">{rawData.length} bản ghi</span>
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={handleCreateRow}
+            className="!rounded-xl !bg-primary/10 !text-primary !border-primary/20 hover:!bg-primary/20"
+          >
+            Thêm ngày
+          </Button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-white/5">
+                {['Ngày', 'Flashcard ôn', 'Video xem', 'Quiz làm', 'Coins nhận', 'Coins tiêu', 'Hành động'].map((h) => (
+                  <th key={h} className="text-left text-slate-500 text-xs font-semibold uppercase tracking-wide px-4 py-3 first:pl-0">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rawData.map((d) => (
+                <tr key={d.date} className="border-b border-white/5 hover:bg-white/[0.02]">
+                  <td className="px-4 py-3 first:pl-0 text-slate-300 text-xs font-medium">{dayjs(d.date).format('DD/MM/YYYY')}</td>
+                  <td className="px-4 py-3 text-white text-xs font-medium">{d.flashcardsReviewed.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-white text-xs font-medium">{d.videosWatched.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-white text-xs font-medium">{d.quizzesTaken.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-green-400 text-xs font-medium">{d.coinsEarned.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-red-400 text-xs font-medium">{d.coinsSpent.toLocaleString()}</td>
+                  <td className="px-4 py-3">
+                    <Tooltip title="Chỉnh sửa">
+                      <button
+                        onClick={() => handleEditRow(d)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:bg-primary/10 border border-transparent hover:border-primary/20"
+                      >
+                        <EditOutlined style={{ fontSize: 12, color: C.purple }} />
+                      </button>
+                    </Tooltip>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </ChartCard>
+
+      <div className="flex justify-end">
+        <Button onClick={load} icon={<ReloadOutlined />} className="!rounded-xl !bg-white/5 !text-slate-400 !border-white/10 hover:!bg-white/10">
+          Làm mới dữ liệu
+        </Button>
+      </div>
+
+      {/* Edit / Create Drawer */}
+      <Drawer
+        title={
+          <div className="flex items-center gap-2">
+            {drawerMode === 'edit' ? (
+              <>
+                <EditOutlined style={{ color: C.purple }} />
+                <span className="text-white font-bold">Chỉnh sửa dữ liệu ngày</span>
+                {editDate && <Tag color="purple" className="!rounded-full">{editDate.label}</Tag>}
+              </>
+            ) : (
+              <>
+                <PlusOutlined style={{ color: C.green }} />
+                <span className="text-white font-bold">Thêm dữ liệu ngày mới</span>
+              </>
+            )}
+          </div>
+        }
+        placement="right"
+        width={480}
+        onClose={() => setDrawerOpen(false)}
+        open={drawerOpen}
+        styles={{
+          body: { backgroundColor: '#0f1623', padding: '24px' },
+          header: { backgroundColor: '#0f1623', borderBottom: '1px solid rgba(255,255,255,0.08)' },
+        }}
+      >
+        <div className="space-y-5">
+          <Alert
+            type="info"
+            showIcon
+            message={
+              drawerMode === 'edit'
+                ? 'Chỉnh sửa dữ liệu tổng hợp theo ngày cho toàn bộ nền tảng. Biểu đồ sẽ được cập nhật ngay sau khi lưu.'
+                : 'Thêm dữ liệu học tập cho một ngày mới. Biểu đồ sẽ được cập nhật ngay sau khi lưu.'
+            }
+            className="!rounded-xl !bg-primary/5 !border-primary/20"
+          />
+
+          {drawerMode === 'create' && (
+            <div>
+              <label className="text-slate-400 text-xs font-medium block mb-1.5">Ngày</label>
+              <DatePicker
+                value={createDate ? dayjs(createDate) : null}
+                onChange={(_, ds) => setCreateDate((ds as string) || '')}
+                format="DD/MM/YYYY"
+                className="!w-full !rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white [&_.ant-picker-input>input]:!text-white [&_.ant-picker-suffix]:!text-slate-400"
+                disabledDate={(current) => current && current > dayjs().endOf('day')}
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-slate-400 text-xs font-medium block mb-1.5">Video đã xem</label>
+              <InputNumber
+                min={0}
+                value={editForm.videosWatched}
+                onChange={(v) => setEditForm((f) => ({ ...f, videosWatched: v ?? 0 }))}
+                className="!w-full !rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white [&_.ant-input-number-input]:!text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 text-xs font-medium block mb-1.5">Phút học</label>
+              <InputNumber
+                min={0}
+                value={editForm.minutesLearned}
+                onChange={(v) => setEditForm((f) => ({ ...f, minutesLearned: v ?? 0 }))}
+                className="!w-full !rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white [&_.ant-input-number-input]:!text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 text-xs font-medium block mb-1.5">Flashcard ôn</label>
+              <InputNumber
+                min={0}
+                value={editForm.flashcardsReviewed}
+                onChange={(v) => setEditForm((f) => ({ ...f, flashcardsReviewed: v ?? 0 }))}
+                className="!w-full !rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white [&_.ant-input-number-input]:!text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 text-xs font-medium block mb-1.5">Quiz làm</label>
+              <InputNumber
+                min={0}
+                value={editForm.quizzesTaken}
+                onChange={(v) => setEditForm((f) => ({ ...f, quizzesTaken: v ?? 0 }))}
+                className="!w-full !rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white [&_.ant-input-number-input]:!text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 text-xs font-medium block mb-1.5">Điểm quiz TB</label>
+              <InputNumber
+                min={0}
+                max={100}
+                value={editForm.averageQuizScore}
+                onChange={(v) => setEditForm((f) => ({ ...f, averageQuizScore: v ?? 0 }))}
+                className="!w-full !rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white [&_.ant-input-number-input]:!text-white"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 text-xs font-medium block mb-1.5">Coins nhận</label>
+              <InputNumber
+                min={0}
+                value={editForm.coinsEarned}
+                onChange={(v) => setEditForm((f) => ({ ...f, coinsEarned: v ?? 0 }))}
+                className="!w-full !rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white [&_.ant-input-number-input]:!text-white"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="text-slate-400 text-xs font-medium block mb-1.5">Coins tiêu</label>
+              <InputNumber
+                min={0}
+                value={editForm.coinsSpent}
+                onChange={(v) => setEditForm((f) => ({ ...f, coinsSpent: v ?? 0 }))}
+                className="!w-full !rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white [&_.ant-input-number-input]:!text-white"
+              />
+            </div>
+          </div>
+
+          <Button
+            block
+            size="large"
+            loading={saving}
+            onClick={handleSave}
+            icon={<SaveOutlined />}
+            className="!rounded-xl !bg-primary !border-primary hover:!bg-primary/90 !text-white !font-semibold"
+          >
+            Lưu thay đổi
+          </Button>
+        </div>
+      </Drawer>
+    </div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────
 
 export default function AdminSystemEditorClient() {
@@ -2206,6 +2748,17 @@ export default function AdminSystemEditorClient() {
                     { label: 'Đọc chi tiết', desc: 'Cột "Chi tiết" hiển thị JSON data của hành động (VD: số coins cấp, user bị cấm, payment được duyệt). Cột "ID mục tiêu" hiển thị 8 ký tự đầu của ID record bị tác động.' },
                   ]}
                 />
+                {/* Analytics */}
+                <GuideSection
+                  icon={<BarChartOutlined />}
+                  title="9. Biểu đồ học tập — Thống kê hoạt động"
+                  color={C.purple}
+                  steps={[
+                    { label: 'Xem biểu đồ từng loại', desc: 'Chọn tab con: Flashcard ôn, Video đã xem, hoặc Quiz làm để xem biểu đồ đường cho từng loại hoạt động theo thời gian.' },
+                    { label: 'Chọn khoảng thời gian', desc: 'Sử dụng bộ chọn: 7 ngày, 14 ngày, 30 ngày để xem dữ liệu trong khoảng thời gian phù hợp. Tất cả biểu đồ và bảng đều cập nhật theo lựa chọn này.' },
+                    { label: 'Biểu đồ kết hợp', desc: 'Tab "Biểu đồ kết hợp" hiển thị cả 3 loại hoạt động trên cùng 1 biểu đồ đường để dễ so sánh. Biểu đồ cột kết hợp cho thấy tỷ lệ giữa các loại hoạt động theo ngày.' },
+                  ]}
+                />
                 {/* Important Notes */}
                 <div className="rounded-xl border p-4 space-y-2" style={{ backgroundColor: `${C.red}08`, borderColor: `${C.red}20` }}>
                   <div className="flex items-center gap-2 mb-2">
@@ -2261,6 +2814,7 @@ export default function AdminSystemEditorClient() {
           {activeTab === 'ai-queue' && <TabErrorBoundary tabName="AI Queue"><AIQueueTab msgApi={msgApi} /></TabErrorBoundary>}
           {activeTab === 'reports' && <TabErrorBoundary tabName="Báo cáo tuần"><ReportsTab msgApi={msgApi} /></TabErrorBoundary>}
           {activeTab === 'logs' && <TabErrorBoundary tabName="Nhật ký"><LogsTab msgApi={msgApi} /></TabErrorBoundary>}
+          {activeTab === 'analytics' && <TabErrorBoundary tabName="Biểu đồ học tập"><AnalyticsTab msgApi={msgApi} /></TabErrorBoundary>}
         </div>
       </div>
     </div>
