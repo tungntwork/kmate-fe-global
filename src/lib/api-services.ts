@@ -302,7 +302,7 @@ export const adminService = {
   createFakePayment: (data: { userId: string; amount: number; coinAmount: number; status?: 'PENDING' | 'SUCCESS' }) =>
     api.post<{ data: unknown }>('/admin/payments/create-fake', data),
 
-  updatePayment: (paymentId: string, data: { status?: string; amount?: number; paidAt?: string | null }) =>
+  updatePayment: (paymentId: string, data: { status?: string; amount?: number; coinAmount?: number; paidAt?: string | null }) =>
     api.put<{ success: boolean }>(`/admin/payments/${paymentId}`, data),
 
   createFakeAIJob: (data: { userId: string; videoId: string; type?: string; status?: string; priority?: number }) =>

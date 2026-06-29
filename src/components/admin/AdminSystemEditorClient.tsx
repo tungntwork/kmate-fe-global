@@ -1391,6 +1391,7 @@ function PaymentsTab({ msgApi }: { msgApi: ReturnType<typeof message.useMessage>
   const [editPayment, setEditPayment] = useState<AdminPayment | null>(null);
   const [editStatus, setEditStatus] = useState<string>('PENDING');
   const [editAmount, setEditAmount] = useState<number>(0);
+  const [editCoinAmount, setEditCoinAmount] = useState<number>(0);
   const [editPaidAt, setEditPaidAt] = useState<string>('');
   const [editSaving, setEditSaving] = useState(false);
 
@@ -1487,7 +1488,7 @@ function PaymentsTab({ msgApi }: { msgApi: ReturnType<typeof message.useMessage>
                       <td className="px-5 py-3.5 last:pr-6"><p className="text-slate-400 text-xs">Tạo: {dayjs(p.createdAt).format('DD/MM/YY HH:mm')}</p>{p.paidAt && <p className="text-slate-500 text-xs">TT: {dayjs(p.paidAt).format('DD/MM/YY HH:mm')}</p>}</td>
                       <td className="px-5 py-3.5 last:pr-6">
                         <div className="flex gap-1.5 flex-wrap">
-                          <Tooltip title="Sửa"><Button size="small" icon={<EditOutlined />} onClick={() => { setEditPayment(p); setEditStatus(p.status); setEditAmount(p.amount); setEditPaidAt(p.paidAt ? dayjs(p.paidAt).format('YYYY-MM-DDTHH:mm') : ''); setEditDrawerOpen(true); }} className="!rounded-xl !text-xs !bg-primary/10 !text-primary !border-primary/20 hover:!bg-primary/20" /></Tooltip>
+                          <Tooltip title="Sửa"><Button size="small" icon={<EditOutlined />} onClick={() => { setEditPayment(p); setEditStatus(p.status); setEditAmount(p.amount); setEditCoinAmount(p.coinAmount); setEditPaidAt(p.paidAt ? dayjs(p.paidAt).format('YYYY-MM-DDTHH:mm') : ''); setEditDrawerOpen(true); }} className="!rounded-xl !text-xs !bg-primary/10 !text-primary !border-primary/20 hover:!bg-primary/20" /></Tooltip>
                           {p.status === 'PENDING' && (
                             <>
                               <Popconfirm title="Xác nhận thanh toán?" onConfirm={() => handleApprove(p.id)} okText="Xác nhận" cancelText="Huỷ">
@@ -1631,6 +1632,11 @@ function PaymentsTab({ msgApi }: { msgApi: ReturnType<typeof message.useMessage>
                 formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} />
             </div>
             <div>
+              <label className="text-slate-400 text-xs font-medium block mb-1.5">Số Xu</label>
+              <InputNumber min={0} value={editCoinAmount} onChange={(v) => setEditCoinAmount(v ?? 0)}
+                className="!w-full !rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white [&_.ant-input-number-input]:!text-white" />
+            </div>
+            <div>
               <label className="text-slate-400 text-xs font-medium block mb-1.5">Trạng thái</label>
               <Select value={editStatus} onChange={(v) => setEditStatus(v)} className="!w-full" popupClassName="kmate-dark-select"
                 options={[{ value: 'PENDING', label: 'Đang chờ' }, { value: 'SUCCESS', label: 'Thành công' }, { value: 'FAILED', label: 'Thất bại' }, { value: 'EXPIRED', label: 'Hết hạn' }, { value: 'REFUNDED', label: 'Hoàn tiền' }]} />
@@ -1648,7 +1654,7 @@ function PaymentsTab({ msgApi }: { msgApi: ReturnType<typeof message.useMessage>
                 onClick={async () => {
                   setEditSaving(true);
                   try {
-                    await adminService.updatePayment(editPayment.id, { amount: editAmount, status: editStatus as any, paidAt: editPaidAt || null });
+                    await adminService.updatePayment(editPayment.id, { amount: editAmount, coinAmount: editCoinAmount, status: editStatus as any, paidAt: editPaidAt || null });
                     msgApi.success('Cập nhật thanh toán thành công');
                     setEditDrawerOpen(false); setEditPayment(null); loadPayments(page, statusFilter);
                   } catch (e: any) { msgApi.error(e?.response?.data?.error?.message ?? 'Lỗi cập nhật thanh toán'); }
