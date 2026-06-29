@@ -82,6 +82,8 @@ export default function AdminUserDetailPage() {
   const [editLoading, setEditLoading] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string>('');
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [flashcardCount, setFlashcardCount] = useState<number>(user?._count?.flashcards ?? 0);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   const fetchUser = () => {
     const id = params.id as string;
@@ -95,6 +97,10 @@ export default function AdminUserDetailPage() {
   };
 
   useEffect(() => { fetchUser(); }, [params.id]);
+
+  useEffect(() => {
+    if (user) setFlashcardCount(user._count?.flashcards ?? 0);
+  }, [user]);
 
   useEffect(() => {
     if (grantOpen) {
@@ -151,7 +157,27 @@ export default function AdminUserDetailPage() {
         lastActiveAt: values.lastActiveAt ? new Date(values.lastActiveAt).toISOString() : null,
       });
       const updated = res.data.data;
-      setUser((u) => u ? { ...u, ...updated } : u);
+
+      // Override flashcard count if changed
+      const originalFlashcardCount = user?._count?.flashcards ?? 0;
+      if (flashcardCount !== originalFlashcardCount) {
+        setStatsLoading(true);
+        try {
+          const statsRes = await adminService.overrideUserStats(params.id as string, {
+            flashcardCount,
+          });
+          const merged = { ...updated, _count: { ...updated._count, flashcards: statsRes.data.data._count.flashcards } };
+          setUser((u) => u ? { ...u, ...merged } : u);
+        } catch {
+          // stats override failed but user profile was saved — still show success
+          setUser((u) => u ? { ...u, ...updated } : u);
+        } finally {
+          setStatsLoading(false);
+        }
+      } else {
+        setUser((u) => u ? { ...u, ...updated } : u);
+      }
+
       setEditOpen(false);
       notification.success({
         message: 'Cập nhật thành công',
@@ -697,6 +723,27 @@ export default function AdminUserDetailPage() {
             </Form.Item>
           </div>
 
+          {/* Flashcard count override */}
+          <div className="mt-5 pt-4 border-t border-white/5">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-white text-sm font-semibold">Số Flashcards</p>
+                <p className="text-slate-500 text-xs mt-0.5">Hiện tại: <span className="text-primary font-medium">{user?._count?.flashcards ?? 0} thẻ</span></p>
+              </div>
+              <InputNumber
+                min={0}
+                value={flashcardCount}
+                onChange={(val) => setFlashcardCount(val ?? 0)}
+                formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                parser={(value) => Number(String(value).replace(/,/g, '')) as any}
+                className="!w-40 !rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white"
+              />
+            </div>
+            <p className="text-slate-600 text-xs">
+              Thay đổi số lượng flashcards của người dùng. Hệ thống sẽ tự động thêm hoặc xóa thẻ để khớp với giá trị mới.
+            </p>
+          </div>
+
           <div className="flex gap-3 justify-end mt-6 pt-4 border-t border-white/5">
             <Button onClick={() => setEditOpen(false)} className="!rounded-xl !bg-white/5 !border-white/10 !text-slate-300 hover:!bg-white/10">
               Hủy bỏ
@@ -704,7 +751,7 @@ export default function AdminUserDetailPage() {
             <Button
               type="primary"
               htmlType="submit"
-              loading={editLoading}
+              loading={editLoading || statsLoading}
               icon={<SaveOutlined />}
               className="!rounded-xl !bg-primary !border-primary hover:!bg-primary/90"
             >

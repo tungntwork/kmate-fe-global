@@ -231,6 +231,7 @@ export const adminService = {
       watchProgressCount?: number;
       paymentCount?: number;
       totalPaymentAmount?: number;
+      flashcardCount?: number;
     },
   ) =>
     api.post<{ data: AdminUserDetail }>(`/admin/users/${id}/override-stats`, data),

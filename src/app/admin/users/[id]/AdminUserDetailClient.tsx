@@ -90,6 +90,7 @@ interface EditFormValues {
   watchProgressCount: number;
   paymentCount: number;
   totalPaymentAmount: number;
+  flashcardCount: number;
 }
 
 export default function AdminUserDetailPage() {
@@ -146,6 +147,7 @@ export default function AdminUserDetailPage() {
       watchProgressCount: (user as any)._count?.watchProgress ?? 0,
       paymentCount: (user as any)._count?.payments ?? 0,
       totalPaymentAmount: (user as any).totalPaymentAmount ?? 0,
+      flashcardCount: (user as any)._count?.flashcards ?? 0,
     });
     setAvatarPreview(user.avatar || '');
     setEditOpen(true);
@@ -180,6 +182,9 @@ export default function AdminUserDetailPage() {
       }
       if (values.totalPaymentAmount !== (user as any).totalPaymentAmount) {
         statsPayload.totalPaymentAmount = values.totalPaymentAmount;
+      }
+      if (values.flashcardCount !== (user as any)._count?.flashcards) {
+        statsPayload.flashcardCount = values.flashcardCount;
       }
 
       const [userRes, statsRes] = await Promise.all([
@@ -796,6 +801,19 @@ export default function AdminUserDetailPage() {
                 prefix={<DollarOutlined className="text-slate-500" />}
                 formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                 parser={(v) => String(v).replace(/,/g, '') as unknown as 0}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="flashcardCount"
+              label={<span className="text-slate-400 text-xs">Số Flashcards</span>}
+              rules={[{ required: true, message: 'Vui lòng nhập số flashcards' }]}
+            >
+              <InputNumber
+                placeholder="0"
+                min={0}
+                className="!w-full !rounded-lg !bg-white/5 !border-white/10 !text-sm !text-white"
+                prefix={<span className="text-slate-500 text-sm">📇</span>}
               />
             </Form.Item>
 

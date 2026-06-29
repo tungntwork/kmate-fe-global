@@ -1822,8 +1822,8 @@ function AIQueueTab({ msgApi }: { msgApi: ReturnType<typeof message.useMessage>[
               </div>
               <div>
                 <label className="text-slate-400 text-xs font-medium block mb-1.5">Video ID *</label>
-                <Input placeholder="Nhập video ID (UUID từ bảng Video)" value={videoIdInput} onChange={(e) => setVideoIdInput(e.target.value)} className="!rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white placeholder:!text-slate-500" />
-                <p className="text-slate-600 text-xs mt-1">Nhập UUID hợp lệ từ bảng Video trong database</p>
+                <Input placeholder="Nhập video ID (UUID bất kỳ)" value={videoIdInput} onChange={(e) => setVideoIdInput(e.target.value)} className="!rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white placeholder:!text-slate-500" />
+                <p className="text-slate-600 text-xs mt-1">UUID không cần tồn tại trong database</p>
               </div>
               <div>
                 <label className="text-slate-400 text-xs font-medium block mb-1.5">Loại job</label>
@@ -2457,8 +2457,8 @@ function AnalyticsTab({ msgApi }: { msgApi: ReturnType<typeof message.useMessage
             <div>
               <label className="text-slate-400 text-xs font-medium block mb-1.5">Ngày</label>
               <DatePicker
-                value={createDate ? dayjs(createDate) : null}
-                onChange={(_, ds) => setCreateDate((ds as string) || '')}
+                value={createDate ? dayjs(createDate, 'YYYY-MM-DD') : null}
+                onChange={(d) => setCreateDate(d ? d.format('YYYY-MM-DD') : '')}
                 format="DD/MM/YYYY"
                 className="!w-full !rounded-xl !bg-white/5 !border-white/10 !text-sm !text-white [&_.ant-picker-input>input]:!text-white [&_.ant-picker-suffix]:!text-slate-400"
                 disabledDate={(current) => current && current > dayjs().endOf('day')}
